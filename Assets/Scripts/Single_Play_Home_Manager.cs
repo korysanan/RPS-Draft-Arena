@@ -1,24 +1,25 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class Single_Play_Home_Manager : MonoBehaviour
 {
     public void OnPracticeModeClicked()
     {
-        Debug.Log("Practice Mode Button Clicked");
+        SceneManager.LoadScene("PracticeMode");
     }
 
     public void OnTournamentModeClicked()
     {
-        Debug.Log("Tournament Mode Button Clicked");
+        SceneManager.LoadScene("TournamentMode");
     }
 
     public void OnLeagueModeClicked()
     {
-        Debug.Log("League Mode Button Clicked");
+        SceneManager.LoadScene("LeagueMode");
     }
 
     public void OnChallengeModeClicked()
     {
-        Debug.Log("Challenge Mode Button Clicked");
+        SceneManager.LoadScene("ChallengeMode");
     }
 }
