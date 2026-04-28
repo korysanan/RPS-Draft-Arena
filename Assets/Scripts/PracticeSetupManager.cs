@@ -139,6 +139,9 @@ public class PracticeSetupManager : MonoBehaviour
 
     public void OnStartGameClicked()
     {
+        PracticeSettings.Difficulty = selectedDifficulty;
+        PracticeSettings.Rps = selectedRPS;
+        PracticeSettings.Format = selectedFormat;
         SceneManager.LoadScene(practiceSceneName);
     }
 
@@ -172,4 +175,11 @@ public class PracticeSetupManager : MonoBehaviour
         MatchFormat.BO7 => "7판 4선",
         _ => "-"
     };
+}
+
+public static class PracticeSettings
+{
+    public static PracticeSetupManager.AIDifficulty Difficulty = PracticeSetupManager.AIDifficulty.None;
+    public static PracticeSetupManager.RPSType Rps = PracticeSetupManager.RPSType.None;
+    public static PracticeSetupManager.MatchFormat Format = PracticeSetupManager.MatchFormat.None;
 }
