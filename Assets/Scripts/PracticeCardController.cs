@@ -1,5 +1,8 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 // Practice 씬의 카드 매니저.
 // 사용자가 PracticeMode에서 고른 RPS 종류(3/5/7)에 따라
@@ -20,20 +23,29 @@ public class PracticeCardController : MonoBehaviour
     // RPS 카운트에 맞춰 앞쪽 N개를 풀(pool)로 사용한다.
     [SerializeField] private List<Texture> elementTextures = new List<Texture>();
 
+    // 매칭 결과 팝업 (Practice 씬에 미리 배치, 시작 시 비활성)
+    [SerializeField] private GameObject resultPopup;
+    [SerializeField] private TMP_Text resultLabel;
+    [SerializeField] private Button confirmButton;
+
+    // 1번째/2번째 픽 추적용
+    private CardFlip pickA;
+    private CardFlip pickB;
+
     private void Start()
     {
         // RPS 종류에 따라 사용할 카드 수 결정 (3/5/7)
         int count = ResolveCount(PracticeSettings.Rps);
 
-        // 속성 텍스처 풀에 앞에서부터 count개 담기
+        // 속성 인덱스 풀: 0..count-1 == ElementType의 앞쪽 N개와 정확히 일치
         // (RPS-3 → Fire/Water/Nature, RPS-5 → +Wind/Electric, RPS-7 → 전부)
-        var pool = new List<Texture>(count);
-        for (int i = 0; i < count && i < elementTextures.Count; i++)
-            pool.Add(elementTextures[i]);
+        var elementPool = new List<ElementType>(count);
+        for (int i = 0; i < count; i++)
+            elementPool.Add((ElementType)i);
         // 카드별 위치를 매번 무작위로 만들기 위해 섞기
-        Shuffle(pool);
+        Shuffle(elementPool);
 
-        // 각 카드를 순회하며 N개만 활성화하고 텍스처 배분
+        // 각 카드를 순회하며 N개만 활성화하고 속성+텍스처 배분
         for (int i = 0; i < cards.Count; i++)
         {
             bool active = i < count;
@@ -41,12 +53,65 @@ public class PracticeCardController : MonoBehaviour
                 cards[i].SetActive(active);
             if (!active) continue;
 
-            // 활성 카드의 CardFlip에 뒷면(=뒤집었을 때 보일) 텍스처 주입
             var flip = cards[i].GetComponent<CardFlip>();
-            if (flip != null && i < pool.Count)
-                flip.SetBackTexture(pool[i]);
+            if (flip != null && i < elementPool.Count)
+            {
+                var element = elementPool[i];
+                Texture tex = ((int)element) < elementTextures.Count
+                    ? elementTextures[(int)element]
+                    : null;
+                flip.SetCard(element, tex);
+                // 뒤집힘 완료 시 결과 처리 핸들러 등록
+                flip.OnFlipped += HandleCardFlipped;
+            }
+        }
+
+        // 팝업 초기 상태: 숨김 + 확인 버튼은 씬 리로드(=초기화)에 연결
+        if (resultPopup != null) resultPopup.SetActive(false);
+        if (confirmButton != null) confirmButton.onClick.AddListener(OnResetClicked);
+    }
+
+    // CardFlip이 뒤집힘 끝났을 때 호출. 1, 2번째 픽을 추적하다가 2번째에 결과 팝업 표시.
+    private void HandleCardFlipped(CardFlip flip)
+    {
+        if (pickA == null)
+        {
+            pickA = flip;
+            return;
+        }
+        if (pickB == null && flip != pickA)
+        {
+            pickB = flip;
+            ShowResultPopup();
         }
     }
+
+    private void ShowResultPopup()
+    {
+        if (resultPopup == null) return;
+
+        var outcome = TypeChart.GetOutcome(pickA.Element, pickB.Element);
+        if (resultLabel != null)
+        {
+            resultLabel.text =
+                $"A: {pickA.Element}\nB: {pickB.Element}\n결과: {OutcomeKor(outcome)}";
+        }
+        resultPopup.SetActive(true);
+    }
+
+    // 확인 버튼: 같은 씬을 재로드해서 카드/팝업/픽 상태를 모두 초기화 (셔플도 새로)
+    public void OnResetClicked()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+    }
+
+    private static string OutcomeKor(MatchOutcome o) => o switch
+    {
+        MatchOutcome.Win => "A 승리",
+        MatchOutcome.Lose => "B 승리",
+        MatchOutcome.Tie => "무승부",
+        _ => "-"
+    };
 
     // RPS enum → 카드 개수 매핑. 미선택(None) 등은 7로 처리(보호용 기본값)
     private static int ResolveCount(PracticeSetupManager.RPSType rps)

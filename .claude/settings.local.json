@@ -4,7 +4,8 @@
       "Bash(xargs grep *)",
       "Bash(python build_practice_scene.py)",
       "Bash(python build_practice_play_scene.py)",
-      "Bash(python inject_card_flip.py)"
+      "Bash(python inject_card_flip.py)",
+      "Bash(python inject_practice_popup.py)"
     ]
   }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using TMPro;
 using UnityEngine;
@@ -20,6 +21,12 @@ public class CardFlip : MonoBehaviour
 
     private bool flipped;        // 한 번만 뒤집히도록 막는 플래그
     private RectTransform rect;  // 스케일 애니메이션 대상
+
+    // 카드에 할당된 속성. PracticeCardController가 SetCard로 주입한다.
+    public ElementType Element { get; private set; }
+    // 뒤집기 애니메이션이 끝난 직후에 한 번 호출되는 이벤트 (자기 자신을 인자로 전달).
+    public event Action<CardFlip> OnFlipped;
+    public bool IsFlipped => flipped;
 
     private void Awake()
     {
@@ -48,6 +55,14 @@ public class CardFlip : MonoBehaviour
         // 예전에 글자(A,B,C...)를 표시하던 TMP 라벨은 더 이상 쓰지 않으므로 비활성화
         var tmp = backFace.GetComponentInChildren<TMP_Text>(true);
         if (tmp != null) tmp.gameObject.SetActive(false);
+    }
+
+    // 속성 + 텍스처를 한 번에 주입하는 편의 메서드.
+    // 이후 시합 판정에서 Element 프로퍼티로 카드 속성을 조회한다.
+    public void SetCard(ElementType element, Texture texture)
+    {
+        Element = element;
+        SetBackTexture(texture);
     }
 
     // 카드 뒤집기 애니메이션 코루틴.
@@ -82,5 +97,8 @@ public class CardFlip : MonoBehaviour
             yield return null;
         }
         rect.localScale = Vector3.one;
+
+        // 뒤집기 완료 알림 (PracticeCardController가 1번째/2번째 픽 추적용으로 사용)
+        OnFlipped?.Invoke(this);
     }
 }
