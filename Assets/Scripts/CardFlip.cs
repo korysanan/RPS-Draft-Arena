@@ -24,6 +24,9 @@ public class CardFlip : MonoBehaviour
 
     // 카드에 할당된 속성. PracticeCardController가 SetCard로 주입한다.
     public ElementType Element { get; private set; }
+    // 뒤집기 애니메이션이 막 시작된 순간(=클릭/외부 트리거가 확정된 즉시) 동기적으로 호출.
+    // "먼저 클릭한 사람이 임자" 판정처럼 픽을 즉시 확정해야 할 때 사용한다.
+    public event Action<CardFlip> OnFlipStarted;
     // 뒤집기 애니메이션이 끝난 직후에 한 번 호출되는 이벤트 (자기 자신을 인자로 전달).
     public event Action<CardFlip> OnFlipped;
     public bool IsFlipped => flipped;
@@ -37,12 +40,27 @@ public class CardFlip : MonoBehaviour
         if (backFace != null) backFace.SetActive(false);
     }
 
-    // 외부에서도 호출 가능한 뒤집기 트리거 (이미 뒤집혔으면 무시)
+    // 외부에서도 호출 가능한 뒤집기 트리거 (이미 뒤집혔으면 무시).
+    // flipped 플래그와 OnFlipStarted 통지가 코루틴 시작 전에 동기적으로 처리되므로,
+    // 이 호출 직후엔 다른 카드 클릭을 즉시 잠궈도 race condition이 없다.
     public void Flip()
     {
         if (flipped) return;
         flipped = true;
+        OnFlipStarted?.Invoke(this);
         StartCoroutine(FlipRoutine());
+    }
+
+    // 다음 라운드/결판전 진입을 위해 카드 상태를 뒤집기 전(앞면) 상태로 되돌린다.
+    // Element는 외부에서 SetCard로 재배정해도 되고 그대로 둬도 무방.
+    public void ResetFlip()
+    {
+        if (!flipped) return;
+        StopAllCoroutines(); // 진행 중이던 FlipRoutine 중단
+        flipped = false;
+        if (frontGraphic != null) frontGraphic.enabled = true;
+        if (backFace != null) backFace.SetActive(false);
+        if (rect != null) rect.localScale = Vector3.one;
     }
 
     // 뒷면 RawImage에 속성 카드 텍스처를 주입하고, 남아 있던 글자 라벨은 숨긴다.
