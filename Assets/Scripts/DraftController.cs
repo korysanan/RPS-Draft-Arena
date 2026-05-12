@@ -16,12 +16,6 @@ public class DraftController : MonoBehaviour
     private const float AiPickDelay = 1.5f;
     // 한 턴당 픽 제한 시간(초). 시간 초과 시 플레이어는 선택된 카드(없으면 무작위)로 자동 픽.
     private const float PickTimeLimit = 15f;
-    // 순서 변경 단계 제한 시간(초). 만료 시 플레이어 현재 배치 고정 + AI 무작위 셔플 + 결과 팝업.
-    private const float OrderingTimeLimit = 30f;
-    // 슬롯 수: 1~5번(정렬용) + 미출전 2개 = 7
-    private const int MainOrderSlotCount = 5;
-    private const int BenchSlotCount = 2;
-    private const int TotalOrderSlotCount = MainOrderSlotCount + BenchSlotCount;
 
     private TMP_FontAsset font;
 
@@ -50,19 +44,62 @@ public class DraftController : MonoBehaviour
     // 현재 턴의 카운트다운 코루틴 (다음 턴 시작 시 StopCoroutine으로 중단)
     private Coroutine turnTimerCoroutine;
 
-    // 순서 변경 단계용 상태/UI
-    private RectTransform centerColTransform;            // 픽/순서변경 단계에서 공통 재사용하는 중앙 컬럼
-    private readonly List<ElementType> playerSlotOrder = new List<ElementType>(); // 7칸: 0~4 = 1~5번, 5~6 = 미출전
-    private readonly List<ElementType> aiSlotOrder = new List<ElementType>();
-    private readonly List<TMP_Text> orderSlotLabels = new List<TMP_Text>();      // 슬롯별 텍스트 라벨
-    private readonly List<OrderSlotDragHandler> orderSlotHandlers = new List<OrderSlotDragHandler>();
-    private TMP_Text orderingTitleLabel;
-    private TMP_Text orderingTimerLabel;
-    private Coroutine orderingTimerCoroutine;
+    // 매치 단계용 상태/UI
+    private RectTransform centerColTransform;            // 픽/매치 단계에서 공통 재사용하는 중앙 컬럼
+    // 패 확인(30초) / 매 매치 픽 제한(20초) 시간, 총 매치 수(5)
+    private const float HandReviewTimeLimit = 30f;
+    private const float MatchPickTimeLimit = 20f;
+    private const int TotalMatches = 5;
+    // 사용 여부 추적 (PicksPerSide 길이, 슬롯 인덱스 기준)
+    private bool[] playerUsed;
+    private bool[] aiUsed;
+    // 5번의 1:1 매치에서 양쪽이 낸 카드 기록
+    private readonly List<ElementType> playerMatchHistory = new List<ElementType>();
+    private readonly List<ElementType> aiMatchHistory = new List<ElementType>();
+    // 좌/우 슬롯 패널에 누적되는 "사용됨" 오버레이 (다음 라운드 시 정리용)
+    private readonly List<GameObject> playerSlotOverlays = new List<GameObject>();
+    private readonly List<GameObject> aiSlotOverlays = new List<GameObject>();
+    // 매치 단계 UI 참조
+    private TMP_Text matchTitleLabel;
+    private TMP_Text matchTimerLabel;
+    private Button matchPickButton;
+    private readonly List<Button> matchCardButtons = new List<Button>();
+    private readonly List<Image> matchCardImages = new List<Image>();
+    // 매치 진행 상태
+    private int currentMatchIndex;        // 0~4
+    private int selectedMatchSlotIndex;   // 내가 클릭한 카드의 슬롯 인덱스(=playerPickHistory[i]); -1=없음
+    private Coroutine matchTimerCoroutine;
 
-    // 시리즈(다판제) 흐름을 위해 PracticeCardController 참조와 최종 팝업 GameObject를 보관
+    // 시리즈(다판제) 흐름을 위해 PracticeCardController 참조와 팝업 GameObject들을 보관
     private PracticeCardController practiceController;
     private GameObject finalOrderOverlay;
+    private GameObject matchStartPopup;
+    private GameObject matchResultPopup;
+
+    // 베팅(포인트) 시스템
+    private const int StartingPoints = 100;
+    private const int MinBetPerMatch = 5;
+    // wallet: 베팅 가능 풀 (시작 100, 최대 100). 베팅 시 차감, 무승부/승리 시 회수, 패배 시 영구 손실.
+    private int playerWallet;
+    private int aiWallet;
+    // earnings: 베팅 수익 누적. 승리 시 +bet, 패배/무 시 변화 없음. 베팅에는 사용 불가.
+    private int playerEarnings;
+    private int aiEarnings;
+    // 매 매치 베팅 기록 (라운드 요약용)
+    private readonly List<int> playerBetHistory = new List<int>();
+    private readonly List<int> aiBetHistory = new List<int>();
+    // 베팅 팝업 상태/UI
+    private GameObject betPopup;
+    private TMP_Text betValueLabel;
+    private Button betMinusBtn;
+    private Button betPlusBtn;
+    private int currentBetValue;
+    private int currentBetMin;
+    private int currentBetMax;
+    private int pendingPlayerSlotIdx; // 픽 버튼 직후 보관 (베팅 확정 시 사용)
+    // 사이드 패널 헤더 라벨 — 포인트 갱신용
+    private TMP_Text playerHeaderLabel;
+    private TMP_Text aiHeaderLabel;
 
     // 카드 색상 상수
     private static readonly Color CardDefaultColor = new Color(0.86f, 0.86f, 0.86f, 1f);
@@ -75,17 +112,27 @@ public class DraftController : MonoBehaviour
         font = fontAsset;
         practiceController = controller;
 
-        // 이전 라운드의 최종 결과 오버레이가 캔버스에 남아 있으면 정리
-        if (finalOrderOverlay != null)
-        {
-            Destroy(finalOrderOverlay);
-            finalOrderOverlay = null;
-        }
-        // 순서 변경 단계 잔여 상태 정리
-        playerSlotOrder.Clear();
-        aiSlotOrder.Clear();
-        orderSlotLabels.Clear();
-        orderSlotHandlers.Clear();
+        // 이전 라운드의 잔여 오버레이/팝업 정리
+        if (finalOrderOverlay != null) { Destroy(finalOrderOverlay); finalOrderOverlay = null; }
+        if (matchStartPopup != null) { Destroy(matchStartPopup); matchStartPopup = null; }
+        if (matchResultPopup != null) { Destroy(matchResultPopup); matchResultPopup = null; }
+        if (betPopup != null) { Destroy(betPopup); betPopup = null; }
+        // 매치 단계 잔여 상태 정리 (좌/우 슬롯 오버레이는 BuildUi의 자식 destroy에 함께 사라지므로 리스트만 비움)
+        playerMatchHistory.Clear();
+        aiMatchHistory.Clear();
+        playerSlotOverlays.Clear();
+        aiSlotOverlays.Clear();
+        matchCardButtons.Clear();
+        matchCardImages.Clear();
+        currentMatchIndex = 0;
+        selectedMatchSlotIndex = -1;
+        // 베팅 시스템 라운드 초기화 — 매 라운드 wallet 100/earnings 0부터 새로 시작
+        playerWallet = StartingPoints;
+        aiWallet = StartingPoints;
+        playerEarnings = 0;
+        aiEarnings = 0;
+        playerBetHistory.Clear();
+        aiBetHistory.Clear();
 
         BuildUi(rpsCount);
         pickOrder = BuildPickOrder(PicksPerSide * 2, playerGoesFirst);
@@ -119,8 +166,8 @@ public class DraftController : MonoBehaviour
 
         if (currentPickIndex >= pickOrder.Length)
         {
-            // 드래프트 종료 → 순서 변경 단계로 진입 (중앙 UI 교체 + 30초 타이머 시작)
-            EnterOrderingPhase();
+            // 드래프트 종료 → 패 확인 단계로 진입 (중앙 UI 교체 + 30초 타이머 시작)
+            EnterHandReviewPhase();
             return;
         }
         bool playerTurn = pickOrder[currentPickIndex];
@@ -362,10 +409,22 @@ public class DraftController : MonoBehaviour
         var right = MakeColumn("RightColumn", 0.8f, 1f);
         centerColTransform = center; // 순서변경 단계에서 재사용
 
-        BuildSidePanel(left, "A\n(Player)", playerSlotLabels);
-        BuildSidePanel(right, "B\n(Other Player)", aiSlotLabels);
+        playerHeaderLabel = BuildSidePanel(left, "A (Player)", playerSlotLabels);
+        aiHeaderLabel = BuildSidePanel(right, "B (Other Player)", aiSlotLabels);
         BuildCenter(center, rpsCount);
+        UpdateSidePointsDisplay();
     }
+
+    // 좌/우 사이드 패널 헤더에 시리즈 승수 + wallet/earnings를 표시. 매치 진행마다 호출되어 갱신된다.
+    private void UpdateSidePointsDisplay()
+    {
+        if (playerHeaderLabel != null)
+            playerHeaderLabel.text = $"A (Player)\n시리즈 {SeriesState.PlayerScore}승  (목표 {SeriesState.RoundsToWin}승)\n보유 {playerWallet}pt  수익 {FormatSigned(playerEarnings)}";
+        if (aiHeaderLabel != null)
+            aiHeaderLabel.text = $"B (Other Player)\n시리즈 {SeriesState.AiScore}승  (목표 {SeriesState.RoundsToWin}승)\n보유 {aiWallet}pt  수익 {FormatSigned(aiEarnings)}";
+    }
+
+    private static string FormatSigned(int v) => v > 0 ? "+" + v : v.ToString();
 
     private RectTransform MakeColumn(string name, float xMin, float xMax)
     {
@@ -373,16 +432,16 @@ public class DraftController : MonoBehaviour
         return rt;
     }
 
-    // 측면 패널: 상단 헤더(이름) + 아래 7개 슬롯(번갈아 음영)
-    private void BuildSidePanel(RectTransform col, string headerText, List<TMP_Text> slotOut)
+    // 측면 패널: 상단 헤더(이름 + 시리즈 + 포인트) + 아래 7개 슬롯(번갈아 음영). 헤더 라벨은 포인트 갱신용으로 반환.
+    private TMP_Text BuildSidePanel(RectTransform col, string headerText, List<TMP_Text> slotOut)
     {
-        const float headerHeightRatio = 0.12f;
+        const float headerHeightRatio = 0.20f;
         const float slotsTopRatio = 1f - headerHeightRatio;
 
         // 헤더
         var header = MakeRect("Header", col, new Vector2(0f, slotsTopRatio), new Vector2(1f, 1f));
         AddImage(header, new Color(0.78f, 0.78f, 0.78f, 1f));
-        var headerLabel = AddTmpLabel(header, headerText, 26f, TextAlignmentOptions.Center);
+        var headerLabel = AddTmpLabel(header, headerText, 18f, TextAlignmentOptions.Center);
         headerLabel.color = Color.black;
 
         // 슬롯 7개 (헤더 아래 영역을 균등 분할)
@@ -400,6 +459,7 @@ public class DraftController : MonoBehaviour
             lbl.color = Color.black;
             slotOut.Add(lbl);
         }
+        return headerLabel;
     }
 
     // 중앙: 타이틀("밴픽 시스템") + 정보 라벨("남은 시간 / 차례") + 가운데 카드 영역
@@ -486,20 +546,11 @@ public class DraftController : MonoBehaviour
         confirmPickButton.interactable = false; // 시작 시: 선택된 카드가 없으므로 비활성
     }
 
-    // ── 순서 변경 단계 ─────────────────────────────────────────────────────
+    // ── 패 확인 + 5번의 1:1 매치 단계 ─────────────────────────────────────
 
-    // 14턴 드래프트가 끝나면 호출. 중앙 컬럼을 비우고 1~5번/미출전 슬롯을 새로 그린 뒤 30초 타이머 시작.
-    private void EnterOrderingPhase()
+    // 14턴 드래프트가 끝나면 호출. 중앙 컬럼을 비우고 "패 확인" UI를 그린 뒤 30초 카운트다운.
+    private void EnterHandReviewPhase()
     {
-        // 초기 배치: 픽 순서대로 → 1~5번 슬롯은 1~5번째 픽, 미출전은 6~7번째 픽
-        playerSlotOrder.Clear();
-        aiSlotOrder.Clear();
-        for (int i = 0; i < TotalOrderSlotCount; i++)
-        {
-            playerSlotOrder.Add(i < playerPickHistory.Count ? playerPickHistory[i] : default);
-            aiSlotOrder.Add(i < aiPickHistory.Count ? aiPickHistory[i] : default);
-        }
-
         // 픽 단계 UI 모두 제거 + 잔여 참조 정리
         if (centerColTransform != null)
         {
@@ -512,141 +563,547 @@ public class DraftController : MonoBehaviour
         confirmPickButton = null;
         cardButtons.Clear();
         selectedCardIndex = -1;
-        // 픽 타이머도 정리 (이미 AdvanceTurn 진입부에서 멈췄지만 방어적으로)
         if (turnTimerCoroutine != null) { StopCoroutine(turnTimerCoroutine); turnTimerCoroutine = null; }
 
-        BuildOrderingCenter();
+        // 매치 상태 초기화
+        playerUsed = new bool[PicksPerSide];
+        aiUsed = new bool[PicksPerSide];
+        playerMatchHistory.Clear();
+        aiMatchHistory.Clear();
+        currentMatchIndex = 0;
+        selectedMatchSlotIndex = -1;
 
-        if (orderingTimerCoroutine != null) StopCoroutine(orderingTimerCoroutine);
-        orderingTimerCoroutine = StartCoroutine(OrderingTimerRoutine());
+        BuildHandReviewCenter();
+        if (matchTimerCoroutine != null) StopCoroutine(matchTimerCoroutine);
+        matchTimerCoroutine = StartCoroutine(HandReviewTimerRoutine());
     }
 
-    // 순서 변경 단계 중앙 UI 빌드: 타이틀/타이머 + 1~5번 가로 슬롯 5개 + 미출전 슬롯 2개
-    private void BuildOrderingCenter()
+    // 패 확인 단계 중앙: 타이틀 + 30초 타이머 + 안내문
+    private void BuildHandReviewCenter()
     {
         if (centerColTransform == null) return;
-        orderSlotLabels.Clear();
-        orderSlotHandlers.Clear();
 
-        // 타이틀
-        var titleRect = MakeRect("OrderingTitle", centerColTransform, new Vector2(0f, 0.90f), new Vector2(1f, 1f));
-        orderingTitleLabel = AddTmpLabel(titleRect, "순서 변경 진행", 34f, TextAlignmentOptions.Center);
-        orderingTitleLabel.color = Color.black;
+        var titleRect = MakeRect("HandReviewTitle", centerColTransform, new Vector2(0f, 0.86f), new Vector2(1f, 0.98f));
+        matchTitleLabel = AddTmpLabel(titleRect, "패 확인 시간", 38f, TextAlignmentOptions.Center);
+        matchTitleLabel.color = Color.black;
 
-        // 타이머
-        var timerRect = MakeRect("OrderingTimer", centerColTransform, new Vector2(0f, 0.80f), new Vector2(1f, 0.89f));
-        orderingTimerLabel = AddTmpLabel(timerRect, $"남은 시간 : {Mathf.CeilToInt(OrderingTimeLimit)}초", 22f, TextAlignmentOptions.Center);
-        orderingTimerLabel.color = Color.black;
+        var timerRect = MakeRect("HandReviewTimer", centerColTransform, new Vector2(0f, 0.74f), new Vector2(1f, 0.84f));
+        matchTimerLabel = AddTmpLabel(timerRect, $"남은 시간 : {Mathf.CeilToInt(HandReviewTimeLimit)}초", 26f, TextAlignmentOptions.Center);
+        matchTimerLabel.color = Color.black;
 
-        // 상단 5개 슬롯 행
-        var topRow = MakeRect("OrderTopRow", centerColTransform, new Vector2(0.05f, 0.42f), new Vector2(0.95f, 0.72f));
-        for (int i = 0; i < MainOrderSlotCount; i++)
-        {
-            float xMin = (float)i / MainOrderSlotCount;
-            float xMax = (float)(i + 1) / MainOrderSlotCount;
-            var slot = MakeRect("Slot" + (i + 1), topRow,
-                new Vector2(xMin + 0.02f, 0f), new Vector2(xMax - 0.02f, 1f));
-            BuildOrderSlot(slot, slotIndex: i, header: (i + 1).ToString());
-        }
-
-        // 하단 미출전 슬롯 2개 (가운데 정렬)
-        var benchRow = MakeRect("OrderBenchRow", centerColTransform, new Vector2(0.30f, 0.08f), new Vector2(0.70f, 0.38f));
-        for (int i = 0; i < BenchSlotCount; i++)
-        {
-            float xMin = (float)i / BenchSlotCount;
-            float xMax = (float)(i + 1) / BenchSlotCount;
-            var slot = MakeRect("Bench" + (i + 1), benchRow,
-                new Vector2(xMin + 0.05f, 0f), new Vector2(xMax - 0.05f, 1f));
-            BuildOrderSlot(slot, slotIndex: MainOrderSlotCount + i, header: "미출전");
-        }
+        var infoRect = MakeRect("HandReviewInfo", centerColTransform, new Vector2(0.05f, 0.30f), new Vector2(0.95f, 0.70f));
+        var infoLbl = AddTmpLabel(infoRect,
+            $"라운드 {SeriesState.CurrentRound}/{SeriesState.TotalRounds}   시리즈 스코어 {SeriesState.PlayerScore} - {SeriesState.AiScore}\n\n30초 후 시합이 시작됩니다.\n좌/우의 내 패와 상대 패를 확인하세요.",
+            24f, TextAlignmentOptions.Center);
+        infoLbl.color = new Color(0.3f, 0.3f, 0.3f, 1f);
     }
 
-    // 단일 슬롯: 상단 헤더(번호 또는 "미출전") + 하단 카드(드래그 핸들러 부착)
-    private void BuildOrderSlot(RectTransform container, int slotIndex, string header)
+    private IEnumerator HandReviewTimerRoutine()
     {
-        // 헤더 라벨
-        var headerRect = MakeRect("Header", container, new Vector2(0f, 0.78f), new Vector2(1f, 1f));
-        var headerLbl = AddTmpLabel(headerRect, header, 22f, TextAlignmentOptions.Center);
-        headerLbl.color = Color.black;
-
-        // 카드 — Image + Text + DragHandler
-        var card = MakeRect("Card", container, new Vector2(0f, 0f), new Vector2(1f, 0.75f));
-        AddImage(card, CardDefaultColor);
-        var lbl = AddTmpLabel(card, playerSlotOrder[slotIndex].ToString(), 24f, TextAlignmentOptions.Center);
-        lbl.color = Color.black;
-
-        var handler = card.gameObject.AddComponent<OrderSlotDragHandler>();
-        handler.slotIndex = slotIndex;
-        handler.onSwap = OnOrderSlotSwap;
-
-        orderSlotLabels.Add(lbl);
-        orderSlotHandlers.Add(handler);
-    }
-
-    // 드래그 핸들러 콜백: 두 슬롯의 ElementType과 화면 라벨을 동시에 교환
-    private void OnOrderSlotSwap(int fromIndex, int toIndex)
-    {
-        if (fromIndex == toIndex) return;
-        if (fromIndex < 0 || fromIndex >= playerSlotOrder.Count) return;
-        if (toIndex < 0 || toIndex >= playerSlotOrder.Count) return;
-
-        (playerSlotOrder[fromIndex], playerSlotOrder[toIndex]) = (playerSlotOrder[toIndex], playerSlotOrder[fromIndex]);
-        orderSlotLabels[fromIndex].text = playerSlotOrder[fromIndex].ToString();
-        orderSlotLabels[toIndex].text = playerSlotOrder[toIndex].ToString();
-    }
-
-    // 30초 카운트다운 — 매 프레임 라벨 갱신, 만료 시 FinalizeOrdering 호출
-    private IEnumerator OrderingTimerRoutine()
-    {
-        float remaining = OrderingTimeLimit;
+        float remaining = HandReviewTimeLimit;
         while (remaining > 0f)
         {
-            if (orderingTimerLabel != null)
+            if (matchTimerLabel != null)
             {
                 int secs = Mathf.CeilToInt(Mathf.Max(0f, remaining));
-                orderingTimerLabel.text = $"남은 시간 : {secs}초";
+                matchTimerLabel.text = $"남은 시간 : {secs}초";
             }
             yield return null;
             remaining -= Time.deltaTime;
         }
-        if (orderingTimerLabel != null) orderingTimerLabel.text = "남은 시간 : 0초";
-        FinalizeOrdering();
+        if (matchTimerLabel != null) matchTimerLabel.text = "남은 시간 : 0초";
+        ShowMatchStartPopup();
     }
 
-    // 타이머 만료: 드래그 잠금 + AI 무작위 셔플 + 라운드 결과 시리즈에 반영 + 결과 팝업
-    private void FinalizeOrdering()
+    // "시합을 시작합니다" 팝업 — 확인 누르면 첫 매치 진입
+    private void ShowMatchStartPopup()
     {
-        foreach (var h in orderSlotHandlers)
-        {
-            if (h != null) h.SetDragEnabled(false);
-        }
-        ShuffleAiOrder();
-        UpdateSeriesScoreFromRound();
-        ShowFinalOrderPopup();
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+
+        matchStartPopup = new GameObject("MatchStartPopup", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        matchStartPopup.transform.SetParent(canvas.transform, false);
+        var overlayRt = (RectTransform)matchStartPopup.transform;
+        overlayRt.anchorMin = Vector2.zero;
+        overlayRt.anchorMax = Vector2.one;
+        overlayRt.offsetMin = Vector2.zero;
+        overlayRt.offsetMax = Vector2.zero;
+        matchStartPopup.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.78f);
+        matchStartPopup.transform.SetAsLastSibling();
+
+        var box = new GameObject("Box", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        box.transform.SetParent(matchStartPopup.transform, false);
+        var boxRt = (RectTransform)box.transform;
+        boxRt.anchorMin = new Vector2(0.5f, 0.5f);
+        boxRt.anchorMax = new Vector2(0.5f, 0.5f);
+        boxRt.pivot = new Vector2(0.5f, 0.5f);
+        boxRt.sizeDelta = new Vector2(700f, 360f);
+        boxRt.anchoredPosition = Vector2.zero;
+        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
+
+        var titleRect = MakeRect("Title", boxRt, new Vector2(0f, 0.45f), new Vector2(1f, 0.95f));
+        var title = AddTmpLabel(titleRect, "시합을 시작합니다", 40f, TextAlignmentOptions.Center);
+        title.color = Color.white;
+
+        var btnRect = MakeRect("ConfirmButton", boxRt, new Vector2(0.30f, 0.10f), new Vector2(0.70f, 0.38f));
+        var btnImg = AddImage(btnRect, Color.white);
+        var btnLbl = AddTmpLabel(btnRect, "확인", 28f, TextAlignmentOptions.Center);
+        btnLbl.color = Color.black;
+        var startBtn = btnRect.gameObject.AddComponent<Button>();
+        startBtn.targetGraphic = btnImg;
+        startBtn.onClick.AddListener(OnMatchStartConfirmed);
     }
 
-    // 1~5번 슬롯끼리 대결한 결과(승/패/무)로 라운드 우열을 결정해 시리즈 점수에 반영.
-    //   wins  > losses : 플레이어가 라운드 승 → PlayerScore++
-    //   wins  < losses : AI 승                 → AiScore++
-    //   wins == losses : 라운드 동점 → 시리즈 점수는 그대로 두고 LastRoundTied=true.
-    //                    실제 결판은 다음 라운드 진입 시 PracticeCardController가 카드 뒤집기로 해결.
-    private void UpdateSeriesScoreFromRound()
+    private void OnMatchStartConfirmed()
     {
-        int wins = 0, losses = 0;
-        for (int i = 0; i < MainOrderSlotCount; i++)
+        if (matchStartPopup != null) { Destroy(matchStartPopup); matchStartPopup = null; }
+        BeginMatch(0);
+    }
+
+    // matchIndex번째 1:1 매치를 시작 — 중앙 UI를 카드 선택 + 픽 버튼으로 다시 빌드하고 20초 타이머.
+    private void BeginMatch(int matchIndex)
+    {
+        currentMatchIndex = matchIndex;
+        selectedMatchSlotIndex = -1;
+
+        if (centerColTransform != null)
         {
-            var outcome = TypeChart.GetOutcome(playerSlotOrder[i], aiSlotOrder[i]);
-            if (outcome == MatchOutcome.Win) wins++;
-            else if (outcome == MatchOutcome.Lose) losses++;
+            for (int i = centerColTransform.childCount - 1; i >= 0; i--)
+            {
+                Destroy(centerColTransform.GetChild(i).gameObject);
+            }
+        }
+        matchCardButtons.Clear();
+        matchCardImages.Clear();
+        matchPickButton = null;
+        matchTimerLabel = null;
+        matchTitleLabel = null;
+
+        BuildMatchCenter();
+        if (matchTimerCoroutine != null) StopCoroutine(matchTimerCoroutine);
+        matchTimerCoroutine = StartCoroutine(MatchPickTimerRoutine());
+    }
+
+    // 매치 단계 중앙 UI: 매치 번호/타이머/안내 + 내 7장 표시(사용된 카드는 어두운 오버레이+체크) + 픽 버튼
+    private void BuildMatchCenter()
+    {
+        if (centerColTransform == null) return;
+
+        var titleRect = MakeRect("MatchTitle", centerColTransform, new Vector2(0f, 0.92f), new Vector2(1f, 1f));
+        matchTitleLabel = AddTmpLabel(titleRect, $"매치 {currentMatchIndex + 1} / {TotalMatches}", 36f, TextAlignmentOptions.Center);
+        matchTitleLabel.color = Color.black;
+
+        var timerRect = MakeRect("MatchTimer", centerColTransform, new Vector2(0f, 0.84f), new Vector2(1f, 0.92f));
+        matchTimerLabel = AddTmpLabel(timerRect, $"남은 시간 : {Mathf.CeilToInt(MatchPickTimeLimit)}초", 24f, TextAlignmentOptions.Center);
+        matchTimerLabel.color = Color.black;
+
+        var infoRect = MakeRect("MatchInfo", centerColTransform, new Vector2(0f, 0.76f), new Vector2(1f, 0.84f));
+        var infoLbl = AddTmpLabel(infoRect,
+            $"라운드 {SeriesState.CurrentRound}/{SeriesState.TotalRounds}   시리즈 스코어 {SeriesState.PlayerScore} - {SeriesState.AiScore}\n낼 카드 한 장을 고른 뒤 픽 버튼을 누르세요.",
+            18f, TextAlignmentOptions.Center);
+        infoLbl.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+
+        // 카드 영역 (내 패 7장을 3+4 피라미드로)
+        var cardArea = MakeRect("Cards", centerColTransform, new Vector2(0.05f, 0.12f), new Vector2(0.95f, 0.78f));
+        int[] rowCounts = { 3, 4 };
+        int picked = 0;
+        int totalRows = rowCounts.Length;
+        for (int r = 0; r < totalRows; r++)
+        {
+            int count = rowCounts[r];
+            float rowH = 1f / totalRows;
+            float rowTop = 1f - r * rowH;
+            float rowBot = rowTop - rowH;
+            for (int c = 0; c < count; c++)
+            {
+                int slotIdx = picked;
+                float colW = 1f / count;
+                float xMin = c * colW + colW * 0.18f;
+                float xMax = (c + 1) * colW - colW * 0.18f;
+                var cardRect = MakeRect(
+                    "Card_" + slotIdx,
+                    cardArea,
+                    new Vector2(xMin, rowBot + rowH * 0.12f),
+                    new Vector2(xMax, rowTop - rowH * 0.12f));
+                var img = AddImage(cardRect, CardDefaultColor);
+                var element = slotIdx < playerPickHistory.Count ? playerPickHistory[slotIdx] : default;
+                var lbl = AddTmpLabel(cardRect, element.ToString(), 24f, TextAlignmentOptions.Center);
+                lbl.color = Color.black;
+
+                var btn = cardRect.gameObject.AddComponent<Button>();
+                btn.targetGraphic = img;
+                int captured = slotIdx;
+                btn.onClick.AddListener(() => OnMatchCardClicked(captured));
+                matchCardButtons.Add(btn);
+                matchCardImages.Add(img);
+
+                bool used = slotIdx < playerUsed.Length && playerUsed[slotIdx];
+                btn.interactable = !used;
+                if (used) AddUsedOverlayOnRect(cardRect);
+
+                picked++;
+            }
         }
 
-        if (wins > losses)
+        // 픽 버튼 (드래프트 단계의 "결정" 버튼과 동일 위치)
+        var pickRect = MakeRect("MatchPickButton", centerColTransform, new Vector2(0.35f, 0.02f), new Vector2(0.65f, 0.10f));
+        var pickImg = AddImage(pickRect, Color.white);
+        var pickLbl = AddTmpLabel(pickRect, "픽", 28f, TextAlignmentOptions.Center);
+        pickLbl.color = Color.black;
+        matchPickButton = pickRect.gameObject.AddComponent<Button>();
+        matchPickButton.targetGraphic = pickImg;
+        var colors = matchPickButton.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+        colors.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        colors.disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.6f);
+        matchPickButton.colors = colors;
+        matchPickButton.onClick.AddListener(OnMatchPickClicked);
+        matchPickButton.interactable = false;
+    }
+
+    private void OnMatchCardClicked(int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= playerUsed.Length) return;
+        if (playerUsed[slotIndex]) return;
+
+        // 이전 선택 카드 하이라이트 원복
+        if (selectedMatchSlotIndex >= 0
+            && selectedMatchSlotIndex < matchCardImages.Count
+            && !playerUsed[selectedMatchSlotIndex])
+        {
+            matchCardImages[selectedMatchSlotIndex].color = CardDefaultColor;
+        }
+        selectedMatchSlotIndex = slotIndex;
+        if (slotIndex < matchCardImages.Count)
+            matchCardImages[slotIndex].color = CardSelectedColor;
+        if (matchPickButton != null) matchPickButton.interactable = true;
+    }
+
+    private void OnMatchPickClicked()
+    {
+        if (selectedMatchSlotIndex < 0) return;
+        if (matchTimerCoroutine != null) { StopCoroutine(matchTimerCoroutine); matchTimerCoroutine = null; }
+        foreach (var b in matchCardButtons) if (b != null) b.interactable = false;
+        if (matchPickButton != null) matchPickButton.interactable = false;
+        pendingPlayerSlotIdx = selectedMatchSlotIndex;
+        ShowBetPopup();
+    }
+
+    // 20초 카운트다운 — 만료 시 자동 픽 (선택된 카드 또는 미사용 중 무작위)
+    private IEnumerator MatchPickTimerRoutine()
+    {
+        float remaining = MatchPickTimeLimit;
+        while (remaining > 0f)
+        {
+            if (matchTimerLabel != null)
+            {
+                int secs = Mathf.CeilToInt(Mathf.Max(0f, remaining));
+                matchTimerLabel.text = $"남은 시간 : {secs}초";
+            }
+            yield return null;
+            remaining -= Time.deltaTime;
+        }
+        if (matchTimerLabel != null) matchTimerLabel.text = "남은 시간 : 0초";
+        AutoMatchPick();
+    }
+
+    // 시간 초과: 카드는 (선택 있으면 그것, 없으면 미사용 중 무작위), 베팅은 (마지막이면 전액, 아니면 최소 5pt)
+    private void AutoMatchPick()
+    {
+        int idx = selectedMatchSlotIndex;
+        if (idx < 0 || idx >= playerUsed.Length || playerUsed[idx])
+        {
+            var unused = new List<int>();
+            for (int i = 0; i < playerUsed.Length; i++) if (!playerUsed[i]) unused.Add(i);
+            if (unused.Count == 0) return;
+            idx = unused[Random.Range(0, unused.Count)];
+        }
+        int remainingAfter = TotalMatches - currentMatchIndex - 1;
+        int autoBet = (remainingAfter <= 0) ? playerWallet : Mathf.Min(MinBetPerMatch, playerWallet);
+        SubmitMatchPick(idx, autoBet);
+    }
+
+    // 베팅 팝업 표시. 마지막 매치(remainingAfter==0)면 강제 전액 모드(조정 버튼 없음).
+    private void ShowBetPopup()
+    {
+        int remainingAfter = TotalMatches - currentMatchIndex - 1;
+        bool forced = remainingAfter == 0;
+        if (forced)
+        {
+            currentBetMin = currentBetMax = currentBetValue = Mathf.Max(0, playerWallet);
+        }
+        else
+        {
+            currentBetMin = MinBetPerMatch;
+            currentBetMax = Mathf.Max(MinBetPerMatch, playerWallet - remainingAfter * MinBetPerMatch);
+            currentBetValue = currentBetMin;
+        }
+
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+
+        betPopup = new GameObject("BetPopup", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        betPopup.transform.SetParent(canvas.transform, false);
+        var overlayRt = (RectTransform)betPopup.transform;
+        overlayRt.anchorMin = Vector2.zero;
+        overlayRt.anchorMax = Vector2.one;
+        overlayRt.offsetMin = Vector2.zero;
+        overlayRt.offsetMax = Vector2.zero;
+        betPopup.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.78f);
+        betPopup.transform.SetAsLastSibling();
+
+        var box = new GameObject("Box", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        box.transform.SetParent(betPopup.transform, false);
+        var boxRt = (RectTransform)box.transform;
+        boxRt.anchorMin = new Vector2(0.5f, 0.5f);
+        boxRt.anchorMax = new Vector2(0.5f, 0.5f);
+        boxRt.pivot = new Vector2(0.5f, 0.5f);
+        boxRt.sizeDelta = new Vector2(760f, 520f);
+        boxRt.anchoredPosition = Vector2.zero;
+        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
+
+        // 타이틀
+        var titleRect = MakeRect("Title", boxRt, new Vector2(0f, 0.80f), new Vector2(1f, 0.95f));
+        var title = AddTmpLabel(titleRect,
+            forced ? $"최종 매치 — 남은 포인트 전액 베팅" : $"포인트 베팅 — 매치 {currentMatchIndex + 1}/{TotalMatches}",
+            30f, TextAlignmentOptions.Center);
+        title.color = new Color(1f, 0.85f, 0.4f, 1f);
+
+        // 정보
+        var infoRect = MakeRect("Info", boxRt, new Vector2(0.05f, 0.58f), new Vector2(0.95f, 0.79f));
+        string infoText = forced
+            ? $"마지막 매치 — 남은 보유 포인트를 자동으로 전액 베팅합니다."
+            : $"보유 포인트: {playerWallet}pt\n베팅 범위: {currentBetMin} ~ {currentBetMax}pt\n(남은 매치 {remainingAfter}회 × 최소 {MinBetPerMatch}pt 확보)";
+        var infoLbl = AddTmpLabel(infoRect, infoText, 22f, TextAlignmentOptions.Center);
+        infoLbl.color = Color.white;
+
+        // 값 표시
+        var valueRect = MakeRect("Value", boxRt, new Vector2(0.22f, 0.32f), new Vector2(0.78f, 0.54f));
+        AddImage(valueRect, new Color(0.2f, 0.2f, 0.2f, 1f));
+        betValueLabel = AddTmpLabel(valueRect, $"{currentBetValue}pt", 50f, TextAlignmentOptions.Center);
+        betValueLabel.color = Color.white;
+
+        if (!forced)
+        {
+            var minusRect = MakeRect("MinusBtn", boxRt, new Vector2(0.06f, 0.32f), new Vector2(0.20f, 0.54f));
+            var minusImg = AddImage(minusRect, Color.white);
+            var minusLbl = AddTmpLabel(minusRect, "-5", 32f, TextAlignmentOptions.Center);
+            minusLbl.color = Color.black;
+            betMinusBtn = minusRect.gameObject.AddComponent<Button>();
+            betMinusBtn.targetGraphic = minusImg;
+            var mc = betMinusBtn.colors;
+            mc.disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.6f);
+            betMinusBtn.colors = mc;
+            betMinusBtn.onClick.AddListener(OnBetMinus);
+
+            var plusRect = MakeRect("PlusBtn", boxRt, new Vector2(0.80f, 0.32f), new Vector2(0.94f, 0.54f));
+            var plusImg = AddImage(plusRect, Color.white);
+            var plusLbl = AddTmpLabel(plusRect, "+5", 32f, TextAlignmentOptions.Center);
+            plusLbl.color = Color.black;
+            betPlusBtn = plusRect.gameObject.AddComponent<Button>();
+            betPlusBtn.targetGraphic = plusImg;
+            var pc = betPlusBtn.colors;
+            pc.disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.6f);
+            betPlusBtn.colors = pc;
+            betPlusBtn.onClick.AddListener(OnBetPlus);
+
+            UpdateBetButtonStates();
+        }
+        else
+        {
+            betMinusBtn = null;
+            betPlusBtn = null;
+        }
+
+        // 확정 버튼
+        var confirmRect = MakeRect("ConfirmBtn", boxRt, new Vector2(0.30f, 0.06f), new Vector2(0.70f, 0.26f));
+        var confirmImg = AddImage(confirmRect, Color.white);
+        var confirmLbl = AddTmpLabel(confirmRect, "확정", 30f, TextAlignmentOptions.Center);
+        confirmLbl.color = Color.black;
+        var confirmBtn = confirmRect.gameObject.AddComponent<Button>();
+        confirmBtn.targetGraphic = confirmImg;
+        confirmBtn.onClick.AddListener(OnBetConfirmed);
+    }
+
+    private void OnBetMinus()
+    {
+        int next = currentBetValue - MinBetPerMatch;
+        if (next < currentBetMin) next = currentBetMin;
+        currentBetValue = next;
+        if (betValueLabel != null) betValueLabel.text = $"{currentBetValue}pt";
+        UpdateBetButtonStates();
+    }
+
+    private void OnBetPlus()
+    {
+        int next = currentBetValue + MinBetPerMatch;
+        if (next > currentBetMax) next = currentBetMax;
+        currentBetValue = next;
+        if (betValueLabel != null) betValueLabel.text = $"{currentBetValue}pt";
+        UpdateBetButtonStates();
+    }
+
+    private void UpdateBetButtonStates()
+    {
+        if (betMinusBtn != null) betMinusBtn.interactable = currentBetValue > currentBetMin;
+        if (betPlusBtn != null) betPlusBtn.interactable = currentBetValue < currentBetMax;
+    }
+
+    private void OnBetConfirmed()
+    {
+        int bet = currentBetValue;
+        if (betPopup != null) { Destroy(betPopup); betPopup = null; }
+        SubmitMatchPick(pendingPlayerSlotIdx, bet);
+    }
+
+    // AI 베팅 결정 — 합리적 범위에서 5pt 단위 무작위. 마지막 매치는 강제 전액.
+    private int DecideAiBet()
+    {
+        int remainingAfter = TotalMatches - currentMatchIndex - 1;
+        if (remainingAfter <= 0) return Mathf.Max(0, aiWallet);
+        int min = MinBetPerMatch;
+        int max = Mathf.Max(MinBetPerMatch, aiWallet - remainingAfter * MinBetPerMatch);
+        if (max <= min) return min;
+        int steps = (max - min) / MinBetPerMatch;
+        int randSteps = Random.Range(0, steps + 1);
+        return min + randSteps * MinBetPerMatch;
+    }
+
+    // 양쪽 픽/베팅 동시 확정 — 베팅 정산 + 사용 표시 + 결과 팝업.
+    // 베팅 정산 규칙 (보유 포인트는 베팅 시 빠지면 그대로 유지, 회수는 수익으로 표시):
+    //   - 베팅 시 wallet -= bet
+    //   - 승리 시 earnings += bet*2  (수익에 베팅의 두 배 적립)
+    //   - 패배 시 변화 없음 (잠긴 베팅 영구 손실)
+    //   - 무승부 시 earnings += bet  (수익에 베팅액만큼 적립 — 보유에서 빠진 만큼 수익으로 돌아옴)
+    private void SubmitMatchPick(int playerSlotIdx, int playerBet)
+    {
+        if (matchTimerCoroutine != null) { StopCoroutine(matchTimerCoroutine); matchTimerCoroutine = null; }
+        foreach (var b in matchCardButtons) if (b != null) b.interactable = false;
+        if (matchPickButton != null) matchPickButton.interactable = false;
+
+        var aiCandidates = new List<int>();
+        for (int i = 0; i < aiUsed.Length; i++) if (!aiUsed[i]) aiCandidates.Add(i);
+        if (aiCandidates.Count == 0) return;
+        int aiSlotIdx = aiCandidates[Random.Range(0, aiCandidates.Count)];
+        int aiBet = DecideAiBet();
+
+        playerUsed[playerSlotIdx] = true;
+        aiUsed[aiSlotIdx] = true;
+
+        var playerElem = playerPickHistory[playerSlotIdx];
+        var aiElem = aiPickHistory[aiSlotIdx];
+        playerMatchHistory.Add(playerElem);
+        aiMatchHistory.Add(aiElem);
+        playerBetHistory.Add(playerBet);
+        aiBetHistory.Add(aiBet);
+
+        // 베팅 잠금
+        playerWallet -= playerBet;
+        aiWallet -= aiBet;
+
+        var outcome = TypeChart.GetOutcome(playerElem, aiElem);
+        switch (outcome)
+        {
+            case MatchOutcome.Win:
+                playerEarnings += playerBet * 2;  // 보유는 그대로, 수익에 2배 적립
+                // AI는 잠긴 베팅 영구 손실
+                break;
+            case MatchOutcome.Lose:
+                aiEarnings += aiBet * 2;
+                // 내 잠긴 베팅 영구 손실
+                break;
+            case MatchOutcome.Tie:
+                playerEarnings += playerBet;
+                aiEarnings += aiBet;
+                break;
+        }
+
+        AddUsedOverlayOnSlot(playerSide: true, playerSlotIdx);
+        AddUsedOverlayOnSlot(playerSide: false, aiSlotIdx);
+        UpdateSidePointsDisplay();
+
+        ShowMatchResultPopup(playerElem, aiElem, outcome, playerBet, aiBet);
+    }
+
+    private void ShowMatchResultPopup(ElementType playerElem, ElementType aiElem, MatchOutcome outcome, int playerBet, int aiBet)
+    {
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+
+        matchResultPopup = new GameObject("MatchResultPopup", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        matchResultPopup.transform.SetParent(canvas.transform, false);
+        var overlayRt = (RectTransform)matchResultPopup.transform;
+        overlayRt.anchorMin = Vector2.zero;
+        overlayRt.anchorMax = Vector2.one;
+        overlayRt.offsetMin = Vector2.zero;
+        overlayRt.offsetMax = Vector2.zero;
+        matchResultPopup.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.78f);
+        matchResultPopup.transform.SetAsLastSibling();
+
+        var box = new GameObject("Box", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        box.transform.SetParent(matchResultPopup.transform, false);
+        var boxRt = (RectTransform)box.transform;
+        boxRt.anchorMin = new Vector2(0.5f, 0.5f);
+        boxRt.anchorMax = new Vector2(0.5f, 0.5f);
+        boxRt.pivot = new Vector2(0.5f, 0.5f);
+        boxRt.sizeDelta = new Vector2(760f, 480f);
+        boxRt.anchoredPosition = Vector2.zero;
+        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
+
+        var titleRect = MakeRect("Title", boxRt, new Vector2(0f, 0.80f), new Vector2(1f, 0.96f));
+        var title = AddTmpLabel(titleRect, $"매치 {currentMatchIndex + 1} 결과", 30f, TextAlignmentOptions.Center);
+        title.color = new Color(1f, 0.85f, 0.4f, 1f);
+
+        int playerDelta = outcome == MatchOutcome.Win ? +playerBet : outcome == MatchOutcome.Lose ? -playerBet : 0;
+        int aiDelta = outcome == MatchOutcome.Win ? -aiBet : outcome == MatchOutcome.Lose ? +aiBet : 0;
+        string body =
+            $"나: {playerElem}  (베팅 {playerBet}pt)\n" +
+            $"AI: {aiElem}  (베팅 {aiBet}pt)\n\n" +
+            $"→ {OutcomeKor(outcome)}\n" +
+            $"포인트: 나 {FormatSigned(playerDelta)}pt,  AI {FormatSigned(aiDelta)}pt";
+
+        var contentRect = MakeRect("Content", boxRt, new Vector2(0f, 0.28f), new Vector2(1f, 0.80f));
+        var content = AddTmpLabel(contentRect, body, 24f, TextAlignmentOptions.Center);
+        content.color = Color.white;
+
+        var btnRect = MakeRect("ConfirmButton", boxRt, new Vector2(0.35f, 0.06f), new Vector2(0.65f, 0.24f));
+        var btnImg = AddImage(btnRect, Color.white);
+        var btnLbl = AddTmpLabel(btnRect, "확인", 26f, TextAlignmentOptions.Center);
+        btnLbl.color = Color.black;
+        var btn = btnRect.gameObject.AddComponent<Button>();
+        btn.targetGraphic = btnImg;
+        btn.onClick.AddListener(OnMatchResultConfirmed);
+    }
+
+    private void OnMatchResultConfirmed()
+    {
+        if (matchResultPopup != null) { Destroy(matchResultPopup); matchResultPopup = null; }
+        int next = currentMatchIndex + 1;
+        if (next >= TotalMatches) FinalizeMatches();
+        else BeginMatch(next);
+    }
+
+    // 5번 매치 종료: 시리즈 점수 반영 + 최종 결과 팝업
+    private void FinalizeMatches()
+    {
+        UpdateSeriesScoreFromMatches();
+        ShowFinalMatchPopup();
+    }
+
+    // 5번 매치 종료 시점의 최종 포인트(wallet+earnings)로 라운드 우열 결정 → 시리즈 점수 반영.
+    // 동점이면 SeriesState.LastRoundTied=true 로 두고, 다음 라운드는 카드 뒤집기 결판전으로 진입.
+    private void UpdateSeriesScoreFromMatches()
+    {
+        int playerFinal = playerWallet + playerEarnings;
+        int aiFinal = aiWallet + aiEarnings;
+        if (playerFinal > aiFinal)
         {
             SeriesState.LastRoundTied = false;
             SeriesState.LastRoundPlayerWon = true;
             SeriesState.PlayerScore++;
         }
-        else if (wins < losses)
+        else if (playerFinal < aiFinal)
         {
             SeriesState.LastRoundTied = false;
             SeriesState.LastRoundPlayerWon = false;
@@ -655,28 +1112,16 @@ public class DraftController : MonoBehaviour
         else
         {
             SeriesState.LastRoundTied = true;
-            SeriesState.LastRoundPlayerWon = false; // 의미 없음(동점), 결판전이 결정함
+            SeriesState.LastRoundPlayerWon = false; // 동점, 결판전이 결정
         }
     }
 
-    // AI의 7개 픽을 Fisher-Yates로 무작위 셔플 → 1~5번 슬롯과 미출전이 모두 임의로 재배치됨
-    private void ShuffleAiOrder()
-    {
-        for (int i = aiSlotOrder.Count - 1; i > 0; i--)
-        {
-            int j = Random.Range(0, i + 1);
-            (aiSlotOrder[i], aiSlotOrder[j]) = (aiSlotOrder[j], aiSlotOrder[i]);
-        }
-    }
-
-    // 최종 순서/대결 결과/시리즈 점수를 보여주는 팝업.
-    // 시리즈가 진행 중이면 하단에 "다음 라운드" 버튼이 표시되고, 시리즈가 끝났으면 "시리즈 종료" 안내가 뜬다.
-    private void ShowFinalOrderPopup()
+    private void ShowFinalMatchPopup()
     {
         var canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
 
-        finalOrderOverlay = new GameObject("FinalOrderOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        finalOrderOverlay = new GameObject("FinalMatchOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         finalOrderOverlay.transform.SetParent(canvas.transform, false);
         var overlayRt = (RectTransform)finalOrderOverlay.transform;
         overlayRt.anchorMin = Vector2.zero;
@@ -686,36 +1131,60 @@ public class DraftController : MonoBehaviour
         finalOrderOverlay.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.78f);
         finalOrderOverlay.transform.SetAsLastSibling();
 
-        var box = new GameObject("FinalOrderBox", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        var box = new GameObject("FinalMatchBox", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         box.transform.SetParent(finalOrderOverlay.transform, false);
         var boxRt = (RectTransform)box.transform;
         boxRt.anchorMin = new Vector2(0.5f, 0.5f);
         boxRt.anchorMax = new Vector2(0.5f, 0.5f);
         boxRt.pivot = new Vector2(0.5f, 0.5f);
-        boxRt.sizeDelta = new Vector2(820f, 680f);
+        boxRt.sizeDelta = new Vector2(820f, 760f);
         boxRt.anchoredPosition = Vector2.zero;
         box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
 
-        // 본문 텍스트 (라운드 결과 + 시리즈 점수)
-        var textRect = MakeRect("Content", boxRt, new Vector2(0f, 0.18f), new Vector2(1f, 1f));
-        var content = AddTmpLabel(textRect, BuildOrderSummaryText(), 22f, TextAlignmentOptions.Center);
+        var textRect = MakeRect("Content", boxRt, new Vector2(0f, 0.26f), new Vector2(1f, 1f));
+        var content = AddTmpLabel(textRect, BuildMatchSummaryText(), 22f, TextAlignmentOptions.Center);
         content.color = Color.white;
 
-        // 하단 버튼/안내 영역
-        var bottomRect = MakeRect("Bottom", boxRt, new Vector2(0f, 0.02f), new Vector2(1f, 0.16f));
+        var bottomRect = MakeRect("Bottom", boxRt, new Vector2(0f, 0.02f), new Vector2(1f, 0.24f));
         if (SeriesState.IsSeriesOver)
         {
-            // 시리즈 종료 안내만
             string winner = SeriesState.PlayerWonSeries ? "내가" : "상대가";
-            var endLbl = AddTmpLabel(bottomRect,
+            var endRect = MakeRect("EndLabel", bottomRect, new Vector2(0f, 0.55f), new Vector2(1f, 1f));
+            var endLbl = AddTmpLabel(endRect,
                 $"시리즈 종료 — {winner} 우승!",
                 28f, TextAlignmentOptions.Center);
             endLbl.color = new Color(1f, 0.85f, 0.4f, 1f);
+
+            // 홈으로 / 재시작 두 버튼 (좌/우)
+            var homeRect = MakeRect("HomeButton", bottomRect, new Vector2(0.10f, 0.05f), new Vector2(0.46f, 0.50f));
+            var homeImg = AddImage(homeRect, Color.white);
+            var homeLbl = AddTmpLabel(homeRect, "홈으로", 24f, TextAlignmentOptions.Center);
+            homeLbl.color = Color.black;
+            var homeBtn = homeRect.gameObject.AddComponent<Button>();
+            homeBtn.targetGraphic = homeImg;
+            var hc = homeBtn.colors;
+            hc.normalColor = Color.white;
+            hc.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+            hc.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+            homeBtn.colors = hc;
+            homeBtn.onClick.AddListener(OnSeriesEndHomeClicked);
+
+            var restartRect = MakeRect("RestartButton", bottomRect, new Vector2(0.54f, 0.05f), new Vector2(0.90f, 0.50f));
+            var restartImg = AddImage(restartRect, Color.white);
+            var restartLbl = AddTmpLabel(restartRect, "재시작", 24f, TextAlignmentOptions.Center);
+            restartLbl.color = Color.black;
+            var restartBtn = restartRect.gameObject.AddComponent<Button>();
+            restartBtn.targetGraphic = restartImg;
+            var rc = restartBtn.colors;
+            rc.normalColor = Color.white;
+            rc.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+            rc.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+            restartBtn.colors = rc;
+            restartBtn.onClick.AddListener(OnSeriesEndRestartClicked);
         }
         else
         {
-            // "다음 라운드" 버튼
-            var btnRect = MakeRect("NextRoundButton", bottomRect, new Vector2(0.35f, 0.1f), new Vector2(0.65f, 0.9f));
+            var btnRect = MakeRect("NextRoundButton", bottomRect, new Vector2(0.35f, 0.20f), new Vector2(0.65f, 0.80f));
             var btnImg = AddImage(btnRect, Color.white);
             var btnLbl = AddTmpLabel(btnRect, "다음 라운드", 26f, TextAlignmentOptions.Center);
             btnLbl.color = Color.black;
@@ -730,64 +1199,124 @@ public class DraftController : MonoBehaviour
         }
     }
 
-    // "다음 라운드" 버튼 → 결정 그룹으로 복귀해 PracticeCardController가 라운드를 시작하도록 위임.
-    // 결판전(직전 라운드 동점) 또는 일반 라운드(패자가 선/후픽 선택) 분기는 PracticeCardController가 처리.
+    // 시리즈 종료 후 메인 홈 씬으로 이동 (다른 홈 버튼들과 일관)
+    private void OnSeriesEndHomeClicked()
+    {
+        UnityEngine.SceneManagement.SceneManager.LoadScene("Main_Home");
+    }
+
+    // 시리즈 종료 후 현재 PracticeSettings 그대로 Practice 씬 재로드 (= 같은 설정으로 다시 시작)
+    private void OnSeriesEndRestartClicked()
+    {
+        UnityEngine.SceneManagement.SceneManager.LoadScene("Practice");
+    }
+
+    // "다음 라운드" 버튼 → PracticeCardController가 다음 라운드를 시작하도록 위임
     private void OnNextRoundClicked()
     {
-        if (finalOrderOverlay != null)
-        {
-            Destroy(finalOrderOverlay);
-            finalOrderOverlay = null;
-        }
+        if (finalOrderOverlay != null) { Destroy(finalOrderOverlay); finalOrderOverlay = null; }
         if (practiceController == null)
-        {
-            // 백업 탐색 — 인스펙터/씬 구성에 따라 컨트롤러 참조를 못 받은 경우
             practiceController = FindObjectOfType<PracticeCardController>(true);
-        }
         if (practiceController != null) practiceController.BeginNextRound();
     }
 
-    // 1~5번 슬롯끼리 대결시킨 결과 + 라운드 요약 + 시리즈 점수 + 미출전 카드를 텍스트로 정리
-    // 각 슬롯의 매치는 TypeChart.GetOutcome(나, 상대)로 판정한다.
-    private string BuildOrderSummaryText()
+    private string BuildMatchSummaryText()
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"== 라운드 {SeriesState.CurrentRound} / {SeriesState.TotalRounds} 결과 ==");
         sb.AppendLine();
 
         int wins = 0, losses = 0, ties = 0;
-        for (int i = 0; i < MainOrderSlotCount; i++)
+        for (int i = 0; i < playerMatchHistory.Count; i++)
         {
-            var me = playerSlotOrder[i];
-            var op = aiSlotOrder[i];
+            var me = playerMatchHistory[i];
+            var op = aiMatchHistory[i];
             var outcome = TypeChart.GetOutcome(me, op);
+            int pBet = i < playerBetHistory.Count ? playerBetHistory[i] : 0;
+            int aBet = i < aiBetHistory.Count ? aiBetHistory[i] : 0;
             switch (outcome)
             {
                 case MatchOutcome.Win: wins++; break;
                 case MatchOutcome.Lose: losses++; break;
                 case MatchOutcome.Tie: ties++; break;
             }
-            sb.AppendLine($"  {i + 1}번: 나 {me} vs 상대 {op} → {OutcomeKor(outcome)}");
+            sb.AppendLine($"  매치 {i + 1}: 나 {me}({pBet}pt) vs 상대 {op}({aBet}pt) → {OutcomeKor(outcome)}");
         }
         sb.AppendLine();
-        sb.AppendLine($"  라운드 전적: {wins}승 {losses}패 {ties}무");
+        sb.AppendLine($"  매치 전적: {wins}승 {losses}패 {ties}무");
+        sb.AppendLine();
 
-        // 라운드 우열 요약
+        int playerFinal = playerWallet + playerEarnings;
+        int aiFinal = aiWallet + aiEarnings;
+        sb.AppendLine($"  최종 포인트: 나 {playerFinal}pt  vs  상대 {aiFinal}pt");
+        sb.AppendLine($"   (나: 보유 {playerWallet} / 수익 {FormatSigned(playerEarnings)} | 상대: 보유 {aiWallet} / 수익 {FormatSigned(aiEarnings)})");
+
         string roundResult;
-        if (wins > losses) roundResult = "이번 라운드 → 나의 승!";
-        else if (wins < losses) roundResult = "이번 라운드 → 상대 승!";
+        if (playerFinal > aiFinal) roundResult = "이번 라운드 → 나의 승!";
+        else if (playerFinal < aiFinal) roundResult = "이번 라운드 → 상대 승!";
         else roundResult = "이번 라운드 → 동점 (다음 라운드는 결판전 카드 뒤집기로 시작)";
         sb.AppendLine($"  {roundResult}");
         sb.AppendLine();
-
-        // 시리즈 누적 점수
         sb.AppendLine($"  시리즈 점수: 나 {SeriesState.PlayerScore} - {SeriesState.AiScore} 상대 (선승 {SeriesState.RoundsToWin}점)");
-        sb.AppendLine();
 
-        sb.AppendLine("[ 미출전 ]");
-        sb.AppendLine($"  나:   {playerSlotOrder[MainOrderSlotCount]}, {playerSlotOrder[MainOrderSlotCount + 1]}");
-        sb.AppendLine($"  상대: {aiSlotOrder[MainOrderSlotCount]}, {aiSlotOrder[MainOrderSlotCount + 1]}");
+        // 미사용 카드 (각 측 2장)
+        var pUnused = new List<ElementType>();
+        var aUnused = new List<ElementType>();
+        for (int i = 0; i < PicksPerSide; i++)
+        {
+            if (i < playerPickHistory.Count && playerUsed != null && i < playerUsed.Length && !playerUsed[i])
+                pUnused.Add(playerPickHistory[i]);
+            if (i < aiPickHistory.Count && aiUsed != null && i < aiUsed.Length && !aiUsed[i])
+                aUnused.Add(aiPickHistory[i]);
+        }
+        sb.AppendLine();
+        sb.AppendLine("[ 미사용 카드 ]");
+        sb.AppendLine($"  나:   {string.Join(", ", pUnused)}");
+        sb.AppendLine($"  상대: {string.Join(", ", aUnused)}");
         return sb.ToString();
+    }
+
+    // 좌/우 슬롯 패널 위에 "사용됨" 오버레이(어두운 박스 + 체크) 추가. raw 이미지 자리는 텍스트 체크(✓)로 대체.
+    private void AddUsedOverlayOnSlot(bool playerSide, int slotIdx)
+    {
+        var labels = playerSide ? playerSlotLabels : aiSlotLabels;
+        var overlays = playerSide ? playerSlotOverlays : aiSlotOverlays;
+        if (slotIdx < 0 || slotIdx >= labels.Count || labels[slotIdx] == null) return;
+        var slotTf = labels[slotIdx].transform.parent as RectTransform;
+        if (slotTf == null) return;
+
+        var overlayGo = new GameObject("UsedOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        overlayGo.transform.SetParent(slotTf, false);
+        var rt = (RectTransform)overlayGo.transform;
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        overlayGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+        overlayGo.transform.SetAsLastSibling();
+
+        var checkLbl = AddTmpLabel((RectTransform)overlayGo.transform, "✓", 48f, TextAlignmentOptions.Center);
+        checkLbl.color = new Color(0.4f, 1f, 0.5f, 1f);
+        checkLbl.fontStyle = FontStyles.Bold;
+
+        overlays.Add(overlayGo);
+    }
+
+    // 매치 단계 중앙 카드 위에 "사용됨" 오버레이(어두운 박스 + 체크) — 다음 매치 빌드 시 이미 사용된 카드 시각화
+    private void AddUsedOverlayOnRect(RectTransform card)
+    {
+        var overlayGo = new GameObject("UsedOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        overlayGo.transform.SetParent(card, false);
+        var rt = (RectTransform)overlayGo.transform;
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        overlayGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+        overlayGo.transform.SetAsLastSibling();
+        var checkLbl = AddTmpLabel((RectTransform)overlayGo.transform, "✓", 38f, TextAlignmentOptions.Center);
+        checkLbl.color = new Color(0.4f, 1f, 0.5f, 1f);
+        checkLbl.fontStyle = FontStyles.Bold;
     }
 
     private static string OutcomeKor(MatchOutcome o) => o switch
