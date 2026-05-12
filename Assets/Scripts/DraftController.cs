@@ -80,6 +80,8 @@ public class DraftController : MonoBehaviour
     private GameObject matchResultPopup;
     // 카드 길게 누름 시 표시하는 상성표 오버레이 (떼면 자동 닫힘)
     private GameObject relationshipOverlay;
+    // 매치 단계 듀얼 플립 오버레이 (베팅 확정 후 카드 뒤집기 연출용; 라운드 시작 시 정리)
+    private GameObject duelFlipOverlay;
 
     // 베팅(포인트) 시스템
     private const int StartingPoints = 100;
@@ -124,6 +126,7 @@ public class DraftController : MonoBehaviour
         if (matchResultPopup != null) { Destroy(matchResultPopup); matchResultPopup = null; }
         if (betPopup != null) { Destroy(betPopup); betPopup = null; }
         if (relationshipOverlay != null) { Destroy(relationshipOverlay); relationshipOverlay = null; }
+        if (duelFlipOverlay != null) { Destroy(duelFlipOverlay); duelFlipOverlay = null; }
         // 매치 단계 잔여 상태 정리 (좌/우 슬롯 오버레이는 BuildUi의 자식 destroy에 함께 사라지므로 리스트만 비움)
         playerMatchHistory.Clear();
         aiMatchHistory.Clear();
@@ -925,7 +928,7 @@ public class DraftController : MonoBehaviour
         }
         int remainingAfter = TotalMatches - currentMatchIndex - 1;
         int autoBet = (remainingAfter <= 0) ? playerWallet : Mathf.Min(MinBetPerMatch, playerWallet);
-        SubmitMatchPick(idx, autoBet);
+        StartMatchResolution(idx, autoBet);
     }
 
     // 베팅 팝업 표시. 마지막 매치(remainingAfter==0)면 강제 전액 모드(조정 버튼 없음).
@@ -1058,7 +1061,7 @@ public class DraftController : MonoBehaviour
     {
         int bet = currentBetValue;
         if (betPopup != null) { Destroy(betPopup); betPopup = null; }
-        SubmitMatchPick(pendingPlayerSlotIdx, bet);
+        StartMatchResolution(pendingPlayerSlotIdx, bet);
     }
 
     // AI 베팅 결정 — 합리적 범위에서 5pt 단위 무작위. 마지막 매치는 강제 전액.
@@ -1074,13 +1077,9 @@ public class DraftController : MonoBehaviour
         return min + randSteps * MinBetPerMatch;
     }
 
-    // 양쪽 픽/베팅 동시 확정 — 베팅 정산 + 사용 표시 + 결과 팝업.
-    // 베팅 정산 규칙 (보유 포인트는 베팅 시 빠지면 그대로 유지, 회수는 수익으로 표시):
-    //   - 베팅 시 wallet -= bet
-    //   - 승리 시 earnings += bet*2  (수익에 베팅의 두 배 적립)
-    //   - 패배 시 변화 없음 (잠긴 베팅 영구 손실)
-    //   - 무승부 시 earnings += bet  (수익에 베팅액만큼 적립 — 보유에서 빠진 만큼 수익으로 돌아옴)
-    private void SubmitMatchPick(int playerSlotIdx, int playerBet)
+    // 베팅 확정/타임아웃 직후 호출. AI의 픽/베팅을 결정하고, 듀얼 플립 연출을 거친 뒤 정산을 진행한다.
+    // SubmitMatchPick은 연출 종료 후 호출되어 즉시 정산 + 사용 표시 + 결과 팝업까지 한 번에 처리한다.
+    private void StartMatchResolution(int playerSlotIdx, int playerBet)
     {
         if (matchTimerCoroutine != null) { StopCoroutine(matchTimerCoroutine); matchTimerCoroutine = null; }
         foreach (var b in matchCardButtons) if (b != null) b.interactable = false;
@@ -1092,6 +1091,383 @@ public class DraftController : MonoBehaviour
         int aiSlotIdx = aiCandidates[Random.Range(0, aiCandidates.Count)];
         int aiBet = DecideAiBet();
 
+        var playerElem = playerPickHistory[playerSlotIdx];
+        var aiElem = aiPickHistory[aiSlotIdx];
+
+        StartCoroutine(DuelFlipRoutine(playerSlotIdx, playerBet, aiSlotIdx, aiBet, playerElem, aiElem));
+    }
+
+    // 베팅 확정 후 연출: 좌측(플레이어 픽창 옆)/우측(상대 픽창 옆)에 카드 뒷면 등장 → 짧은 긴장 → 동시 플립 → 잠시 표시 → 정산.
+    private IEnumerator DuelFlipRoutine(
+        int playerSlotIdx, int playerBet,
+        int aiSlotIdx, int aiBet,
+        ElementType playerElem, ElementType aiElem)
+    {
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null)
+        {
+            // 캔버스를 못 찾으면 연출을 건너뛰고 즉시 정산 (시스템적 보호)
+            SubmitMatchPick(playerSlotIdx, playerBet, aiSlotIdx, aiBet);
+            yield break;
+        }
+
+        // 이전 오버레이 잔재 정리 (이론상 없어야 하지만 안전망)
+        if (duelFlipOverlay != null) { Destroy(duelFlipOverlay); duelFlipOverlay = null; }
+
+        duelFlipOverlay = new GameObject("DuelFlipOverlay",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        duelFlipOverlay.transform.SetParent(canvas.transform, false);
+        var overlayRt = (RectTransform)duelFlipOverlay.transform;
+        overlayRt.anchorMin = Vector2.zero;
+        overlayRt.anchorMax = Vector2.one;
+        overlayRt.offsetMin = Vector2.zero;
+        overlayRt.offsetMax = Vector2.zero;
+        duelFlipOverlay.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.68f);
+        duelFlipOverlay.transform.SetAsLastSibling();
+
+        // 가운데 단계 안내 라벨 — "베팅 공개" → "카드 공개" 순으로 텍스트가 바뀐다
+        var phaseRect = MakeRect("PhaseLabel", overlayRt, new Vector2(0.36f, 0.45f), new Vector2(0.64f, 0.58f));
+        var phaseLbl = AddTmpLabel(phaseRect, "베팅 공개", 56f, TextAlignmentOptions.Center);
+        phaseLbl.color = new Color(1f, 0.85f, 0.4f, 1f);
+        phaseLbl.fontStyle = FontStyles.Bold;
+
+        // 플레이어 카드 — 화면 좌측, 플레이어 픽창(LeftColumn=0~0.2) 바로 옆
+        var playerCardRefs = BuildDuelCard(
+            "PlayerDuelCard", overlayRt,
+            new Vector2(0.22f, 0.28f), new Vector2(0.42f, 0.78f),
+            playerElem);
+
+        // 상대 카드 — 화면 우측, AI 픽창(RightColumn=0.8~1.0) 바로 옆
+        var aiCardRefs = BuildDuelCard(
+            "AiDuelCard", overlayRt,
+            new Vector2(0.58f, 0.28f), new Vector2(0.78f, 0.78f),
+            aiElem);
+
+        // 누구 카드인지 표시 (상단)
+        var pLblRect = MakeRect("PlayerLabel", overlayRt, new Vector2(0.22f, 0.80f), new Vector2(0.42f, 0.86f));
+        var pLbl = AddTmpLabel(pLblRect, "나", 28f, TextAlignmentOptions.Center);
+        pLbl.color = Color.white;
+        var aLblRect = MakeRect("AiLabel", overlayRt, new Vector2(0.58f, 0.80f), new Vector2(0.78f, 0.86f));
+        var aLbl = AddTmpLabel(aLblRect, "상대", 28f, TextAlignmentOptions.Center);
+        aLbl.color = Color.white;
+
+        // 베팅 금액 라벨 (각 카드 하단) — 초기엔 "00pt"로 가려놓고 잠시 뒤 실제 액수로 바뀜
+        var pBetRect = MakeRect("PlayerBet", overlayRt, new Vector2(0.22f, 0.19f), new Vector2(0.42f, 0.26f));
+        var pBetLbl = AddTmpLabel(pBetRect, "베팅 00pt", 34f, TextAlignmentOptions.Center);
+        pBetLbl.color = new Color(1f, 0.85f, 0.4f, 1f);
+        pBetLbl.fontStyle = FontStyles.Bold;
+        var aBetRect = MakeRect("AiBet", overlayRt, new Vector2(0.58f, 0.19f), new Vector2(0.78f, 0.26f));
+        var aBetLbl = AddTmpLabel(aBetRect, "베팅 00pt", 34f, TextAlignmentOptions.Center);
+        aBetLbl.color = new Color(1f, 0.85f, 0.4f, 1f);
+        aBetLbl.fontStyle = FontStyles.Bold;
+
+        // 1단계: 가려진 "00pt" 상태로 잠깐 대기 (긴장감)
+        yield return new WaitForSeconds(0.5f);
+
+        // 2단계: 실제 베팅 금액 공개 — 카드는 뒷면 그대로, 베팅액 숫자만 바뀜
+        if (pBetLbl != null) pBetLbl.text = $"베팅 {playerBet}pt";
+        if (aBetLbl != null) aBetLbl.text = $"베팅 {aiBet}pt";
+        yield return new WaitForSeconds(1.3f);
+
+        // 3단계: 카드 공개로 전환
+        if (phaseLbl != null) phaseLbl.text = "카드 공개";
+        yield return new WaitForSeconds(0.4f);
+
+        // 동시 플립
+        yield return StartCoroutine(FlipBothCardsRoutine(playerCardRefs, aiCardRefs, 0.35f));
+
+        // 4단계: 공개 직후 짧은 홀드 — 양쪽 속성을 인지할 시간
+        yield return new WaitForSeconds(0.6f);
+
+        // 5단계: 공격 모션 — 승패면 한쪽이 돌진, 무승부면 양쪽이 가운데서 부딪히는 연출.
+        var attackOutcome = TypeChart.GetOutcome(playerElem, aiElem);
+        if (attackOutcome == MatchOutcome.Win)
+        {
+            yield return StartCoroutine(AttackAnimationRoutine(playerCardRefs, aiCardRefs, attackerIsOnLeft: true));
+        }
+        else if (attackOutcome == MatchOutcome.Lose)
+        {
+            yield return StartCoroutine(AttackAnimationRoutine(aiCardRefs, playerCardRefs, attackerIsOnLeft: false));
+        }
+        else // Tie
+        {
+            yield return StartCoroutine(TieClashAnimationRoutine(playerCardRefs, aiCardRefs));
+        }
+
+        // 마무리 홀드 — 결과 팝업 직전 잠시 카드 상태 보기
+        yield return new WaitForSeconds(0.5f);
+
+        if (duelFlipOverlay != null) { Destroy(duelFlipOverlay); duelFlipOverlay = null; }
+        SubmitMatchPick(playerSlotIdx, playerBet, aiSlotIdx, aiBet);
+    }
+
+    // 공격 모션: 공격자가 살짝 뒤로 윈드업 → 상대 쪽으로 돌진 → 상대 카드 흔들림 + 붉은 틴트 + 임팩트 플래시 → 공격자 복귀.
+    // attackerIsOnLeft: 공격자가 화면 좌측(플레이어 자리)이면 true → 오른쪽으로 돌진. 우측 공격자면 false → 왼쪽으로 돌진.
+    private IEnumerator AttackAnimationRoutine(DuelCardRefs attacker, DuelCardRefs defender, bool attackerIsOnLeft)
+    {
+        if (attacker.rt == null || defender.rt == null) yield break;
+
+        Vector2 attackerHome = attacker.rt.anchoredPosition;
+        Vector2 defenderHome = defender.rt.anchoredPosition;
+        float dir = attackerIsOnLeft ? 1f : -1f;
+
+        // 1) 윈드업: 반대 방향으로 살짝 (긴장감)
+        const float windupDist = 30f;
+        const float windupTime = 0.12f;
+        float t = 0f;
+        while (t < windupTime)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / windupTime);
+            float a = Mathf.Lerp(0f, -windupDist * dir, k);
+            attacker.rt.anchoredPosition = attackerHome + new Vector2(a, 0f);
+            yield return null;
+        }
+
+        // 2) 돌진: 상대 쪽으로 큰 이동 (가속감을 위해 ease-in)
+        const float lungeDist = 220f;
+        const float lungeTime = 0.18f;
+        t = 0f;
+        while (t < lungeTime)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / lungeTime);
+            float ease = k * k; // ease-in
+            float a = Mathf.Lerp(-windupDist * dir, lungeDist * dir, ease);
+            attacker.rt.anchoredPosition = attackerHome + new Vector2(a, 0f);
+            yield return null;
+        }
+        Vector2 lungeEnd = attackerHome + new Vector2(lungeDist * dir, 0f);
+        attacker.rt.anchoredPosition = lungeEnd;
+
+        // 3) 충돌 연출: 방어자 흔들기 + 붉은 틴트 + 임팩트 플래시 (병행 진행)
+        var defenderImg = defender.backGo != null ? defender.backGo.GetComponent<Image>() : null;
+        Color defenderOriginalColor = defenderImg != null ? defenderImg.color : Color.white;
+
+        GameObject flash = new GameObject("ImpactFlash",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        flash.transform.SetParent(defender.rt, false);
+        var fRt = (RectTransform)flash.transform;
+        fRt.anchorMin = Vector2.zero;
+        fRt.anchorMax = Vector2.one;
+        fRt.offsetMin = Vector2.zero;
+        fRt.offsetMax = Vector2.zero;
+        var fImg = flash.GetComponent<Image>();
+        fImg.color = new Color(1f, 1f, 1f, 0.85f);
+        fImg.raycastTarget = false;
+        flash.transform.SetAsLastSibling();
+
+        const float impactTime = 0.4f;
+        const float shakeAmplitude = 14f;
+        const float flashFadeTime = 0.18f;
+        t = 0f;
+        while (t < impactTime)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / impactTime);
+            // 방어자 좌우 흔들기 — 감쇠 사인파
+            float shake = Mathf.Sin(t * 60f) * shakeAmplitude * (1f - k);
+            defender.rt.anchoredPosition = defenderHome + new Vector2(shake, 0f);
+            // 붉은 틴트 → 원래 색으로 페이드
+            if (defenderImg != null)
+            {
+                defenderImg.color = Color.Lerp(new Color(1f, 0.3f, 0.3f, 1f), defenderOriginalColor, k);
+            }
+            // 임팩트 플래시 페이드아웃
+            if (fImg != null)
+            {
+                float fk = Mathf.Clamp01(t / flashFadeTime);
+                fImg.color = new Color(1f, 1f, 1f, Mathf.Lerp(0.85f, 0f, fk));
+            }
+            yield return null;
+        }
+        defender.rt.anchoredPosition = defenderHome;
+        if (defenderImg != null) defenderImg.color = defenderOriginalColor;
+        if (flash != null) Destroy(flash);
+
+        // 4) 공격자 복귀
+        const float returnTime = 0.2f;
+        t = 0f;
+        while (t < returnTime)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / returnTime);
+            attacker.rt.anchoredPosition = Vector2.Lerp(lungeEnd, attackerHome, k);
+            yield return null;
+        }
+        attacker.rt.anchoredPosition = attackerHome;
+    }
+
+    // 무승부 충돌 모션: 양쪽이 동시에 윈드업 → 가운데로 동시 돌진 → 충돌 시 "띵!" 정지 + 플래시 → 반동으로 튕기며 복귀.
+    // 좌측 카드(left)는 우측으로, 우측 카드(right)는 좌측으로 이동. 둘 다 손상 효과(붉은 틴트)는 없음.
+    private IEnumerator TieClashAnimationRoutine(DuelCardRefs left, DuelCardRefs right)
+    {
+        if (left.rt == null || right.rt == null) yield break;
+
+        Vector2 leftHome = left.rt.anchoredPosition;
+        Vector2 rightHome = right.rt.anchoredPosition;
+
+        // 1) 윈드업: 좌우로 동시에 살짝 뒤로
+        const float windupDist = 30f;
+        const float windupTime = 0.12f;
+        float t = 0f;
+        while (t < windupTime)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / windupTime);
+            float a = Mathf.Lerp(0f, windupDist, k);
+            left.rt.anchoredPosition = leftHome + new Vector2(-a, 0f);
+            right.rt.anchoredPosition = rightHome + new Vector2(a, 0f);
+            yield return null;
+        }
+
+        // 2) 동시 돌진: 가운데로 ease-in (양쪽이 정확히 마주보며 가속)
+        const float lungeDist = 180f;
+        const float lungeTime = 0.18f;
+        t = 0f;
+        while (t < lungeTime)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / lungeTime);
+            float ease = k * k;
+            float a = Mathf.Lerp(-windupDist, lungeDist, ease);
+            left.rt.anchoredPosition = leftHome + new Vector2(a, 0f);
+            right.rt.anchoredPosition = rightHome + new Vector2(-a, 0f);
+            yield return null;
+        }
+        Vector2 leftMeet = leftHome + new Vector2(lungeDist, 0f);
+        Vector2 rightMeet = rightHome + new Vector2(-lungeDist, 0f);
+        left.rt.anchoredPosition = leftMeet;
+        right.rt.anchoredPosition = rightMeet;
+
+        // 3) 충돌 정지("띵!") — 가운데에 임팩트 플래시 + 짧은 멈춤
+        GameObject flash = null;
+        if (duelFlipOverlay != null)
+        {
+            flash = new GameObject("TieImpactFlash",
+                typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            flash.transform.SetParent(duelFlipOverlay.transform, false);
+            var fRt = (RectTransform)flash.transform;
+            fRt.anchorMin = new Vector2(0.42f, 0.40f);
+            fRt.anchorMax = new Vector2(0.58f, 0.66f);
+            fRt.offsetMin = Vector2.zero;
+            fRt.offsetMax = Vector2.zero;
+            var fImg = flash.GetComponent<Image>();
+            fImg.color = new Color(1f, 1f, 1f, 0.9f);
+            fImg.raycastTarget = false;
+            flash.transform.SetAsLastSibling();
+        }
+
+        // 충돌 순간 짧은 정지감
+        yield return new WaitForSeconds(0.08f);
+
+        // 4) 반동: 양쪽 카드가 동시에 뒤로 튕기며 흔들림, 점차 홈으로 복귀
+        const float reboundTime = 0.45f;
+        const float reboundPeak = 70f; // 반동 최대 거리(meet 위치 기준 추가로 뒤로)
+        const float shakeAmp = 8f;
+        t = 0f;
+        while (t < reboundTime)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / reboundTime);
+            // 부드러운 반동 곡선: 처음엔 더 뒤로 튕긴 뒤(0→peak) 점차 0으로 수렴
+            float bounce = Mathf.Sin(k * Mathf.PI) * reboundPeak * (1f - k * 0.5f);
+            // meet에서 홈까지 보간 + 반동 추가
+            float leftX = Mathf.Lerp(lungeDist, 0f, k) - bounce;
+            float rightX = -(Mathf.Lerp(lungeDist, 0f, k) - bounce);
+            // 미세 흔들기 (감쇠 사인파)
+            float shake = Mathf.Sin(t * 60f) * shakeAmp * (1f - k);
+            left.rt.anchoredPosition = leftHome + new Vector2(leftX, shake);
+            right.rt.anchoredPosition = rightHome + new Vector2(rightX, -shake);
+            // 플래시 페이드아웃 (앞 0.18s)
+            if (flash != null)
+            {
+                var img = flash.GetComponent<Image>();
+                float fk = Mathf.Clamp01(t / 0.18f);
+                img.color = new Color(1f, 1f, 1f, Mathf.Lerp(0.9f, 0f, fk));
+            }
+            yield return null;
+        }
+        left.rt.anchoredPosition = leftHome;
+        right.rt.anchoredPosition = rightHome;
+        if (flash != null) Destroy(flash);
+    }
+
+    // 듀얼 카드 한 장 빌드: 앞면=Card_Back, 뒷면=속성 카드(초기 비활성). 플립 중간에 스왑된다.
+    private DuelCardRefs BuildDuelCard(string name, RectTransform parent, Vector2 anchorMin, Vector2 anchorMax, ElementType element)
+    {
+        var cardRt = MakeRect(name, parent, anchorMin, anchorMax);
+
+        // 앞면 (Card_Back)
+        var frontRt = MakeRect("Front", cardRt, Vector2.zero, Vector2.one);
+        var frontImg = frontRt.gameObject.AddComponent<Image>();
+        var backSprite = practiceController != null ? practiceController.GetCardBackSprite() : null;
+        if (backSprite != null) frontImg.sprite = backSprite;
+        else frontImg.color = new Color(0.18f, 0.18f, 0.22f, 1f); // 폴백: 짙은 색
+        frontImg.preserveAspect = true;
+        frontImg.raycastTarget = false;
+
+        // 뒷면 (속성 카드) — 초기 비활성
+        var backRt = MakeRect("Back", cardRt, Vector2.zero, Vector2.one);
+        var backImg = backRt.gameObject.AddComponent<Image>();
+        backImg.sprite = GetCardSprite(element);
+        backImg.preserveAspect = true;
+        backImg.raycastTarget = false;
+        backRt.gameObject.SetActive(false);
+
+        return new DuelCardRefs { rt = cardRt, frontGo = frontRt.gameObject, backGo = backRt.gameObject };
+    }
+
+    private struct DuelCardRefs
+    {
+        public RectTransform rt;
+        public GameObject frontGo;
+        public GameObject backGo;
+    }
+
+    // 두 카드를 동시에 가로 압축 → 스왑 → 펼침. CardFlip.cs의 단일 카드 플립을 두 장 동시 진행하도록 재구성.
+    private IEnumerator FlipBothCardsRoutine(DuelCardRefs a, DuelCardRefs b, float duration)
+    {
+        float half = duration * 0.5f;
+        float t = 0f;
+        while (t < half)
+        {
+            t += Time.deltaTime;
+            float s = Mathf.Lerp(1f, 0f, t / half);
+            if (a.rt != null) a.rt.localScale = new Vector3(s, 1f, 1f);
+            if (b.rt != null) b.rt.localScale = new Vector3(s, 1f, 1f);
+            yield return null;
+        }
+        if (a.rt != null) a.rt.localScale = new Vector3(0f, 1f, 1f);
+        if (b.rt != null) b.rt.localScale = new Vector3(0f, 1f, 1f);
+
+        // 가로 폭 0인 순간 앞/뒷면 스왑
+        if (a.frontGo != null) a.frontGo.SetActive(false);
+        if (a.backGo != null) a.backGo.SetActive(true);
+        if (b.frontGo != null) b.frontGo.SetActive(false);
+        if (b.backGo != null) b.backGo.SetActive(true);
+
+        t = 0f;
+        while (t < half)
+        {
+            t += Time.deltaTime;
+            float s = Mathf.Lerp(0f, 1f, t / half);
+            if (a.rt != null) a.rt.localScale = new Vector3(s, 1f, 1f);
+            if (b.rt != null) b.rt.localScale = new Vector3(s, 1f, 1f);
+            yield return null;
+        }
+        if (a.rt != null) a.rt.localScale = Vector3.one;
+        if (b.rt != null) b.rt.localScale = Vector3.one;
+    }
+
+    // 양쪽 픽/베팅 동시 확정 — 베팅 정산 + 사용 표시 + 결과 팝업.
+    // 베팅 정산 규칙 (보유 포인트는 베팅 시 빠지면 그대로 유지, 회수는 수익으로 표시):
+    //   - 베팅 시 wallet -= bet
+    //   - 승리 시 earnings += bet*2  (수익에 베팅의 두 배 적립)
+    //   - 패배 시 변화 없음 (잠긴 베팅 영구 손실)
+    //   - 무승부 시 earnings += bet  (수익에 베팅액만큼 적립 — 보유에서 빠진 만큼 수익으로 돌아옴)
+    private void SubmitMatchPick(int playerSlotIdx, int playerBet, int aiSlotIdx, int aiBet)
+    {
         playerUsed[playerSlotIdx] = true;
         aiUsed[aiSlotIdx] = true;
 

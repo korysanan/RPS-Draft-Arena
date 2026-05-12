@@ -1501,6 +1501,23 @@ MonoBehaviour:
   - {fileID: 2800000, guid: 3aaaadb3c26b3c74da7dc572f494cb44, type: 3}
   - {fileID: 2800000, guid: 301358a378d24874e84ed107907a359c, type: 3}
   - {fileID: 2800000, guid: 6416842f642db1448b7f0a2b6478ee42, type: 3}
+  elementPickSprites:
+  - {fileID: -976795481355956157, guid: 475d3601a4f15294b8fe830039fa3a06, type: 3}
+  - {fileID: 3926747097642721890, guid: 3a0178ab8eb35e840b80eae890b911e8, type: 3}
+  - {fileID: -672813334525226378, guid: 72aac622f5361ed459cab837a5e18db1, type: 3}
+  - {fileID: 1323410898009999186, guid: 101162250a4fe3b4bb3e15ff4a6cc877, type: 3}
+  - {fileID: 8033822769390620928, guid: 26f176b2dbc29aa418c398fb1308fea1, type: 3}
+  - {fileID: 3514913471768866051, guid: 0ef19752f3af5e04eac4e8c2500a3a46, type: 3}
+  - {fileID: 4748040253475877219, guid: 18f94131629667d468fb0570c352adbc, type: 3}
+  elementRelaSprites:
+  - {fileID: 5781943145455348878, guid: 5c1847fe0333aeb4890e9b30a31f7281, type: 3}
+  - {fileID: -4933311384294765034, guid: 74e1f34671353024f93a8354ebb3f43e, type: 3}
+  - {fileID: -7750691656619044493, guid: 706f1b8cfce435d4cb1e68f7db06bdef, type: 3}
+  - {fileID: -3221116487072895800, guid: 82eb4c9addb976c4cbda4a15185c46bb, type: 3}
+  - {fileID: -5872363353394365789, guid: e39f7402ccff89b47819bce62763cdaf, type: 3}
+  - {fileID: -2985702845029894754, guid: 9e173fe0f271bb74386173e39decd292, type: 3}
+  - {fileID: 326233946653359841, guid: 6ea39dcbe754f944fae04fc8c97270e5, type: 3}
+  cardBackSprite: {fileID: -3598721235499264479, guid: c3144b5cb7c18964cbc69207aa27bbfa, type: 3}
   resultPopup: {fileID: 14000001}
   resultLabel: {fileID: 14000033}
   confirmButton: {fileID: 14000044}

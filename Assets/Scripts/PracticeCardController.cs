@@ -36,6 +36,10 @@ public class PracticeCardController : MonoBehaviour
     // 에디터에서는 미와이어 시 Assets/Image/Relationship/{element}_Rela.png에서 자동 로드한다.
     [SerializeField] private List<Sprite> elementRelaSprites = new List<Sprite>();
 
+    // 매치 단계 듀얼 플립에서 카드 뒷면(=뒤집기 전 모습)으로 사용. 빌드본 호환을 위해 인스펙터에 와이어해야 함.
+    // 에디터에서는 미와이어 시 Assets/Image/Card/Card_Back.png에서 자동 로드.
+    [SerializeField] private Sprite cardBackSprite;
+
     // 드래프트 단계 UI(Image)에 쓸 Sprite 캐시. elementTextures가 Sprite 임포트 설정이므로 런타임에 Texture2D → Sprite로 1회 변환.
     private Sprite[] cachedCardSprites;
 
@@ -106,6 +110,22 @@ public class PracticeCardController : MonoBehaviour
         return UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
 #endif
+
+    // 듀얼 플립용 카드 뒷면 스프라이트. 와이어 우선, 에디터에서는 미와이어 시 자동 로드.
+    // 빌드본에서는 와이어가 없으면 null 반환 → 호출 측에서 폴백 처리 필요.
+    public Sprite GetCardBackSprite()
+    {
+        if (cardBackSprite != null) return cardBackSprite;
+#if UNITY_EDITOR
+        var loaded = LoadSpriteAtPath("Assets/Image/Card/Card_Back.png");
+        if (loaded != null)
+        {
+            cardBackSprite = loaded;
+            return loaded;
+        }
+#endif
+        return null;
+    }
 
     // 카드 길게 누름 → 상성표 표시용 스프라이트. 와이어 우선, 에디터에서는 미와이어 시 자동 로드.
     public Sprite GetRelationshipSprite(ElementType element)
