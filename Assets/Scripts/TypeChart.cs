@@ -25,15 +25,20 @@ public enum MatchOutcome
 
 // 속성 상성표 (Assets/Image/Competition/Graph.png 기준).
 //
-// RPS-3 / RPS-5 / RPS-7은 같은 N=7 cyclic 규칙의 부분 집합이다.
-//   - RPS-3: Fire, Water, Nature
+// RPS-3 / RPS-5 / RPS-7은 모두 같은 N=7 상성표의 부분 집합이다.
+//   - RPS-3: Fire, Water, Nature  (Water→Fire→Nature→Water 3원 순환)
 //   - RPS-5: + Wind, Electric
 //   - RPS-7: + Ice, Magic
 //
-// 규칙: 0..6 순환 순서에서 위치 i 는 (i+2, i+4, i+6) mod 7 위치를 이긴다.
-//   Fire(0) → Nature(2), Electric(4), Magic(6) 이김
-//   Water(1) → Wind(3), Ice(5), Fire(0)         이김
-//   ...
+// 각 속성은 정확히 3승 3패 — 표는 양방향 일관성이 검증된 상태.
+//   Fire    →  Nature, Electric, Ice         (짐: Water, Wind, Magic)
+//   Water   →  Fire,   Wind,     Magic       (짐: Nature, Electric, Ice)
+//   Nature  →  Water,  Wind,     Ice         (짐: Fire, Electric, Magic)
+//   Wind    →  Fire,   Electric, Magic       (짐: Water, Nature, Ice)
+//   Electric→  Water,  Nature,   Ice         (짐: Fire, Wind, Magic)
+//   Ice     →  Water,  Wind,     Magic       (짐: Fire, Nature, Electric)
+//   Magic   →  Fire,   Nature,   Electric    (짐: Water, Wind, Ice)
+//
 // 같은 속성끼리는 무승부(Tie). 표에 없는 조합은 자동으로 Lose.
 public static class TypeChart
 {
@@ -41,13 +46,13 @@ public static class TypeChart
     private static readonly Dictionary<ElementType, HashSet<ElementType>> winsAgainst =
         new Dictionary<ElementType, HashSet<ElementType>>
         {
-            { ElementType.Fire,     new HashSet<ElementType> { ElementType.Nature,   ElementType.Electric, ElementType.Magic } },
-            { ElementType.Water,    new HashSet<ElementType> { ElementType.Wind,     ElementType.Ice,      ElementType.Fire } },
-            { ElementType.Nature,   new HashSet<ElementType> { ElementType.Electric, ElementType.Magic,    ElementType.Water } },
-            { ElementType.Wind,     new HashSet<ElementType> { ElementType.Ice,      ElementType.Fire,     ElementType.Nature } },
-            { ElementType.Electric, new HashSet<ElementType> { ElementType.Magic,    ElementType.Water,    ElementType.Wind } },
-            { ElementType.Ice,      new HashSet<ElementType> { ElementType.Fire,     ElementType.Nature,   ElementType.Electric } },
-            { ElementType.Magic,    new HashSet<ElementType> { ElementType.Water,    ElementType.Wind,     ElementType.Ice } },
+            { ElementType.Fire,     new HashSet<ElementType> { ElementType.Nature,   ElementType.Electric, ElementType.Ice } },
+            { ElementType.Water,    new HashSet<ElementType> { ElementType.Fire,     ElementType.Wind,     ElementType.Magic } },
+            { ElementType.Nature,   new HashSet<ElementType> { ElementType.Water,    ElementType.Wind,     ElementType.Ice } },
+            { ElementType.Wind,     new HashSet<ElementType> { ElementType.Fire,     ElementType.Electric, ElementType.Magic } },
+            { ElementType.Electric, new HashSet<ElementType> { ElementType.Water,    ElementType.Nature,   ElementType.Ice } },
+            { ElementType.Ice,      new HashSet<ElementType> { ElementType.Water,    ElementType.Wind,     ElementType.Magic } },
+            { ElementType.Magic,    new HashSet<ElementType> { ElementType.Fire,     ElementType.Nature,   ElementType.Electric } },
         };
 
     // 내 속성 vs 상대 속성 결과를 반환한다.

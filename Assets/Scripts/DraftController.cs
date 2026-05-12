@@ -22,6 +22,9 @@ public class DraftController : MonoBehaviour
     // UI 참조 (모두 BuildUi에서 새로 생성됨)
     private readonly List<TMP_Text> playerSlotLabels = new List<TMP_Text>();
     private readonly List<TMP_Text> aiSlotLabels = new List<TMP_Text>();
+    // 사이드 패널 슬롯 안에 들어가는 카드 이미지 (픽 전까지 sprite=null, 픽 시점에 채워짐)
+    private readonly List<Image> playerSlotCards = new List<Image>();
+    private readonly List<Image> aiSlotCards = new List<Image>();
     private readonly List<Button> cardButtons = new List<Button>();
     private readonly List<ElementType> cardElements = new List<ElementType>();
     private TMP_Text turnLabel;
@@ -75,6 +78,8 @@ public class DraftController : MonoBehaviour
     private GameObject finalOrderOverlay;
     private GameObject matchStartPopup;
     private GameObject matchResultPopup;
+    // 카드 길게 누름 시 표시하는 상성표 오버레이 (떼면 자동 닫힘)
+    private GameObject relationshipOverlay;
 
     // 베팅(포인트) 시스템
     private const int StartingPoints = 100;
@@ -101,8 +106,9 @@ public class DraftController : MonoBehaviour
     private TMP_Text playerHeaderLabel;
     private TMP_Text aiHeaderLabel;
 
-    // 카드 색상 상수
-    private static readonly Color CardDefaultColor = new Color(0.86f, 0.86f, 0.86f, 1f);
+    // 카드 색상 상수 — 이제 카드 이미지(Sprite)에 색을 입혀 표현.
+    //   기본은 흰색(원본 색 그대로), 선택 시 노란 틴트가 카드 위에 살짝 깔린다.
+    private static readonly Color CardDefaultColor = Color.white;
     private static readonly Color CardSelectedColor = new Color(1f, 0.85f, 0.3f, 1f); // 노란 하이라이트
 
     // 외부(PracticeCardController)에서 호출. 픽 순서와 카드 수, "다음 라운드"용 컨트롤러 참조를 받는다.
@@ -117,6 +123,7 @@ public class DraftController : MonoBehaviour
         if (matchStartPopup != null) { Destroy(matchStartPopup); matchStartPopup = null; }
         if (matchResultPopup != null) { Destroy(matchResultPopup); matchResultPopup = null; }
         if (betPopup != null) { Destroy(betPopup); betPopup = null; }
+        if (relationshipOverlay != null) { Destroy(relationshipOverlay); relationshipOverlay = null; }
         // 매치 단계 잔여 상태 정리 (좌/우 슬롯 오버레이는 BuildUi의 자식 destroy에 함께 사라지므로 리스트만 비움)
         playerMatchHistory.Clear();
         aiMatchHistory.Clear();
@@ -353,11 +360,15 @@ public class DraftController : MonoBehaviour
 
     private void RecordPick(bool isPlayer, ElementType element)
     {
+        // 사이드 패널 슬롯에는 와이드 Pick 이미지를 표시 (없으면 Card 이미지로 폴백)
+        var slotSprite = GetPickSprite(element) ?? GetCardSprite(element);
         if (isPlayer)
         {
             if (playerCursor < playerSlotLabels.Count)
             {
-                playerSlotLabels[playerCursor].text = element.ToString();
+                playerSlotLabels[playerCursor].text = string.Empty; // 카드 이미지가 자리하므로 텍스트는 비움
+                if (playerCursor < playerSlotCards.Count && playerSlotCards[playerCursor] != null)
+                    playerSlotCards[playerCursor].sprite = slotSprite;
                 playerCursor++;
             }
             playerPickHistory.Add(element);
@@ -366,13 +377,79 @@ public class DraftController : MonoBehaviour
         {
             if (aiCursor < aiSlotLabels.Count)
             {
-                aiSlotLabels[aiCursor].text = element.ToString();
+                aiSlotLabels[aiCursor].text = string.Empty;
+                if (aiCursor < aiSlotCards.Count && aiSlotCards[aiCursor] != null)
+                    aiSlotCards[aiCursor].sprite = slotSprite;
                 aiCursor++;
             }
             aiPickHistory.Add(element);
         }
         currentPickIndex++;
         AdvanceTurn();
+    }
+
+    // PracticeCardController가 주입한 카드 스프라이트 조회. controller가 없으면 null 반환 (text-only fallback)
+    private Sprite GetCardSprite(ElementType element)
+    {
+        return practiceController != null ? practiceController.GetCardSprite(element) : null;
+    }
+
+    // 사이드 패널 픽 슬롯에 쓸 와이드(3:1) Pick 스프라이트. 미와이어/미존재 시 null → 호출 측에서 Card로 폴백.
+    private Sprite GetPickSprite(ElementType element)
+    {
+        return practiceController != null ? practiceController.GetPickSprite(element) : null;
+    }
+
+    // 카드 길게 누름 시 표시할 상성표 스프라이트.
+    private Sprite GetRelationshipSprite(ElementType element)
+    {
+        return practiceController != null ? practiceController.GetRelationshipSprite(element) : null;
+    }
+
+    // 카드를 1초 이상 누른 순간 호출 — 캔버스 위에 전체 화면 오버레이로 상성표를 띄운다.
+    // 오버레이는 raycastTarget=false라 카드의 PointerExit이 잘못 발동되지 않는다.
+    private void ShowRelationshipChart(ElementType element)
+    {
+        if (relationshipOverlay != null) { Destroy(relationshipOverlay); relationshipOverlay = null; }
+
+        var sprite = GetRelationshipSprite(element);
+        if (sprite == null) return;
+
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+
+        relationshipOverlay = new GameObject("RelationshipOverlay",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        relationshipOverlay.transform.SetParent(canvas.transform, false);
+        var overlayRt = (RectTransform)relationshipOverlay.transform;
+        overlayRt.anchorMin = Vector2.zero;
+        overlayRt.anchorMax = Vector2.one;
+        overlayRt.offsetMin = Vector2.zero;
+        overlayRt.offsetMax = Vector2.zero;
+        var bgImg = relationshipOverlay.GetComponent<Image>();
+        bgImg.color = new Color(0f, 0f, 0f, 0.6f);
+        bgImg.raycastTarget = false; // 카드가 계속 포인터 이벤트를 받게 함
+        relationshipOverlay.transform.SetAsLastSibling();
+
+        // 가운데에 상성표 이미지 (3:2 비율 1536x1024 → preserveAspect로 비율 유지)
+        var chartGo = new GameObject("Chart",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        chartGo.transform.SetParent(relationshipOverlay.transform, false);
+        var chartRt = (RectTransform)chartGo.transform;
+        chartRt.anchorMin = new Vector2(0.1f, 0.1f);
+        chartRt.anchorMax = new Vector2(0.9f, 0.9f);
+        chartRt.offsetMin = Vector2.zero;
+        chartRt.offsetMax = Vector2.zero;
+        var chartImg = chartGo.GetComponent<Image>();
+        chartImg.sprite = sprite;
+        chartImg.preserveAspect = true;
+        chartImg.raycastTarget = false;
+    }
+
+    // 카드에서 손을 떼는(또는 카드 밖으로 벗어나는) 즉시 오버레이를 닫는다.
+    private void HideRelationshipChart()
+    {
+        if (relationshipOverlay != null) { Destroy(relationshipOverlay); relationshipOverlay = null; }
     }
 
     private void SetCardsInteractable(bool interactable)
@@ -393,6 +470,8 @@ public class DraftController : MonoBehaviour
         }
         playerSlotLabels.Clear();
         aiSlotLabels.Clear();
+        playerSlotCards.Clear();
+        aiSlotCards.Clear();
         cardButtons.Clear();
         cardElements.Clear();
         playerPickHistory.Clear();
@@ -409,8 +488,8 @@ public class DraftController : MonoBehaviour
         var right = MakeColumn("RightColumn", 0.8f, 1f);
         centerColTransform = center; // 순서변경 단계에서 재사용
 
-        playerHeaderLabel = BuildSidePanel(left, "A (Player)", playerSlotLabels);
-        aiHeaderLabel = BuildSidePanel(right, "B (Other Player)", aiSlotLabels);
+        playerHeaderLabel = BuildSidePanel(left, "A (Player)", playerSlotLabels, playerSlotCards);
+        aiHeaderLabel = BuildSidePanel(right, "B (Other Player)", aiSlotLabels, aiSlotCards);
         BuildCenter(center, rpsCount);
         UpdateSidePointsDisplay();
     }
@@ -433,7 +512,8 @@ public class DraftController : MonoBehaviour
     }
 
     // 측면 패널: 상단 헤더(이름 + 시리즈 + 포인트) + 아래 7개 슬롯(번갈아 음영). 헤더 라벨은 포인트 갱신용으로 반환.
-    private TMP_Text BuildSidePanel(RectTransform col, string headerText, List<TMP_Text> slotOut)
+    // 픽 시점에 슬롯 내부의 카드 이미지(child Image)에 sprite를 채워 넣는다.
+    private TMP_Text BuildSidePanel(RectTransform col, string headerText, List<TMP_Text> slotOut, List<Image> slotCardOut)
     {
         const float headerHeightRatio = 0.20f;
         const float slotsTopRatio = 1f - headerHeightRatio;
@@ -455,6 +535,19 @@ public class DraftController : MonoBehaviour
                 ? new Color(0.92f, 0.92f, 0.92f, 1f)
                 : new Color(0.82f, 0.82f, 0.82f, 1f);
             AddImage(slot, color);
+
+            // 카드 이미지 자리(child) — 픽 전엔 sprite=null이라 자연스럽게 안 보임. preserveAspect로 카드 비율 유지.
+            var cardRt = MakeRect("CardImage", slot, Vector2.zero, Vector2.one);
+            cardRt.offsetMin = new Vector2(6f, 4f);
+            cardRt.offsetMax = new Vector2(-6f, -4f);
+            var cardImg = cardRt.gameObject.AddComponent<Image>();
+            cardImg.preserveAspect = true;
+            cardImg.raycastTarget = false;
+            cardImg.color = Color.white;
+            cardImg.sprite = null;
+            slotCardOut.Add(cardImg);
+
+            // 라벨은 빈 문자열로 유지 (사용됨 오버레이 부착 시 slot RT를 찾는 앵커 역할만 함)
             var lbl = AddTmpLabel(slot, "", 22f, TextAlignmentOptions.Center);
             lbl.color = Color.black;
             slotOut.Add(lbl);
@@ -513,14 +606,22 @@ public class DraftController : MonoBehaviour
                     cardArea,
                     new Vector2(xMin, rowBot + rowH * 0.12f),
                     new Vector2(xMax, rowTop - rowH * 0.12f));
+                // Image에 카드 스프라이트를 채우고 preserveAspect로 카드 비율 유지(=선픽/후픽 패와 동일한 느낌).
                 var img = AddImage(cardRect, CardDefaultColor);
-                var lbl = AddTmpLabel(cardRect, cardElements[elemIdx].ToString(), 28f, TextAlignmentOptions.Center);
-                lbl.color = Color.black;
+                img.sprite = GetCardSprite(cardElements[elemIdx]);
+                img.preserveAspect = true;
 
+                // Button은 interactable 게이팅과 색상 틴트(=targetGraphic)용으로만 유지하고,
+                // 실제 입력은 CardPressHandler로 라우팅 → 짧은 클릭=선택 / 1초 길게 누름=상성표 표시.
                 var btn = cardRect.gameObject.AddComponent<Button>();
                 btn.targetGraphic = img;
                 int captured = elemIdx; // 클로저 캡쳐 — 각 버튼이 자기 인덱스를 보존
-                btn.onClick.AddListener(() => OnCardClicked(captured));
+                var element = cardElements[captured];
+                var press = cardRect.gameObject.AddComponent<CardPressHandler>();
+                press.longPressDuration = 1f;
+                press.onClick = () => OnCardClicked(captured);
+                press.onLongPressStart = () => ShowRelationshipChart(element);
+                press.onLongPressEnd = HideRelationshipChart;
                 cardButtons.Add(btn);
                 elemIdx++;
             }
@@ -564,6 +665,8 @@ public class DraftController : MonoBehaviour
         cardButtons.Clear();
         selectedCardIndex = -1;
         if (turnTimerCoroutine != null) { StopCoroutine(turnTimerCoroutine); turnTimerCoroutine = null; }
+        // 길게 누름 중이던 카드가 위 destroy로 사라지면 PointerUp이 안 와서 오버레이가 남을 수 있음 → 강제 정리
+        HideRelationshipChart();
 
         // 매치 상태 초기화
         playerUsed = new bool[PicksPerSide];
@@ -727,8 +830,9 @@ public class DraftController : MonoBehaviour
                     new Vector2(xMax, rowTop - rowH * 0.12f));
                 var img = AddImage(cardRect, CardDefaultColor);
                 var element = slotIdx < playerPickHistory.Count ? playerPickHistory[slotIdx] : default;
-                var lbl = AddTmpLabel(cardRect, element.ToString(), 24f, TextAlignmentOptions.Center);
-                lbl.color = Color.black;
+                // 매치 단계 카드도 동일한 카드 스프라이트로 표시 (텍스트 라벨 없음)
+                img.sprite = GetCardSprite(element);
+                img.preserveAspect = true;
 
                 var btn = cardRect.gameObject.AddComponent<Button>();
                 btn.targetGraphic = img;

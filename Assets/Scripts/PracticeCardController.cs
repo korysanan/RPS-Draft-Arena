@@ -27,6 +27,107 @@ public class PracticeCardController : MonoBehaviour
     // RPS 카운트에 맞춰 앞쪽 N개를 풀(pool)로 사용한다.
     [SerializeField] private List<Texture> elementTextures = new List<Texture>();
 
+    // 드래프트 사이드 패널(픽 슬롯)에 표시할 와이드(3:1) Pick 카드 스프라이트.
+    // 와이어 순서는 elementTextures와 동일: Fire_Pick, Water_Pick, Nature_Pick, Wind_Pick, Electric_Pick, Ice_Pick, Magic_Pick
+    // 비어 있으면 DraftController가 GetCardSprite()로 자동 폴백한다.
+    [SerializeField] private List<Sprite> elementPickSprites = new List<Sprite>();
+
+    // 카드 길게 누름 시 표시할 상성표 스프라이트(1536x1024). 와이어 순서는 elementTextures와 동일.
+    // 에디터에서는 미와이어 시 Assets/Image/Relationship/{element}_Rela.png에서 자동 로드한다.
+    [SerializeField] private List<Sprite> elementRelaSprites = new List<Sprite>();
+
+    // 드래프트 단계 UI(Image)에 쓸 Sprite 캐시. elementTextures가 Sprite 임포트 설정이므로 런타임에 Texture2D → Sprite로 1회 변환.
+    private Sprite[] cachedCardSprites;
+
+    // DraftController 등 외부에서 카드 이미지를 가져갈 때 사용. 인덱스가 범위를 벗어나면 null 반환.
+    public Sprite GetCardSprite(ElementType element)
+    {
+        int idx = (int)element;
+        if (idx < 0 || idx >= elementTextures.Count) return null;
+        if (cachedCardSprites == null || cachedCardSprites.Length != elementTextures.Count)
+            cachedCardSprites = new Sprite[elementTextures.Count];
+        if (cachedCardSprites[idx] != null) return cachedCardSprites[idx];
+        var tex2d = elementTextures[idx] as Texture2D;
+        if (tex2d == null) return null;
+        cachedCardSprites[idx] = Sprite.Create(
+            tex2d,
+            new Rect(0f, 0f, tex2d.width, tex2d.height),
+            new Vector2(0.5f, 0.5f));
+        return cachedCardSprites[idx];
+    }
+
+    // 사이드 패널 픽 슬롯용 와이드 Pick 카드 스프라이트.
+    // 인스펙터 와이어가 있으면 그것을 우선 사용; 에디터에서는 미와이어 시 알려진 경로에서 자동 로드 → 와이어 없이 바로 테스트 가능.
+    // 빌드 환경에서는 와이어가 없으면 null 반환 → 호출 측에서 Card 스프라이트로 폴백.
+    public Sprite GetPickSprite(ElementType element)
+    {
+        int idx = (int)element;
+        if (idx < 0) return null;
+
+        if (idx < elementPickSprites.Count && elementPickSprites[idx] != null)
+            return elementPickSprites[idx];
+
+#if UNITY_EDITOR
+        // 에디터 전용 자동 로드: Assets/Image/Draft_Image/Pick_Card/{element}_Pick.png
+        var loaded = LoadPickSpriteFromAssetDatabase(element);
+        if (loaded != null)
+        {
+            while (elementPickSprites.Count <= idx) elementPickSprites.Add(null);
+            elementPickSprites[idx] = loaded;
+            return loaded;
+        }
+#endif
+        return null;
+    }
+
+#if UNITY_EDITOR
+    // Sprite 모드(Multiple)로 임포트된 PNG에서 첫 Sprite 서브에셋을 꺼내 반환.
+    private static Sprite LoadPickSpriteFromAssetDatabase(ElementType element)
+    {
+        return LoadSpriteAtPath($"Assets/Image/Draft_Image/Pick_Card/{element}_Pick.png");
+    }
+
+    private static Sprite LoadRelaSpriteFromAssetDatabase(ElementType element)
+    {
+        return LoadSpriteAtPath($"Assets/Image/Relationship/{element}_Rela.png");
+    }
+
+    private static Sprite LoadSpriteAtPath(string path)
+    {
+        var assets = UnityEditor.AssetDatabase.LoadAllAssetsAtPath(path);
+        if (assets != null)
+        {
+            foreach (var a in assets)
+            {
+                if (a is Sprite s) return s;
+            }
+        }
+        // spriteMode가 Single이면 LoadAssetAtPath로 한 번 더 시도
+        return UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
+    }
+#endif
+
+    // 카드 길게 누름 → 상성표 표시용 스프라이트. 와이어 우선, 에디터에서는 미와이어 시 자동 로드.
+    public Sprite GetRelationshipSprite(ElementType element)
+    {
+        int idx = (int)element;
+        if (idx < 0) return null;
+
+        if (idx < elementRelaSprites.Count && elementRelaSprites[idx] != null)
+            return elementRelaSprites[idx];
+
+#if UNITY_EDITOR
+        var loaded = LoadRelaSpriteFromAssetDatabase(element);
+        if (loaded != null)
+        {
+            while (elementRelaSprites.Count <= idx) elementRelaSprites.Add(null);
+            elementRelaSprites[idx] = loaded;
+            return loaded;
+        }
+#endif
+        return null;
+    }
+
     // 매칭 결과 팝업 (Practice 씬에 미리 배치, 시작 시 비활성)
     [SerializeField] private GameObject resultPopup;
     [SerializeField] private TMP_Text resultLabel;
