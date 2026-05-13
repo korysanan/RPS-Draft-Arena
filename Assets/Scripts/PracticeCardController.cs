@@ -166,6 +166,29 @@ public class PracticeCardController : MonoBehaviour
     [SerializeField] private GameObject draftTransitionPopup;
     [SerializeField] private TMP_Text draftTransitionLabel;
 
+    // 팝업/버튼에 사용할 스프라이트 (인스펙터에서 할당). 비어 있으면 기존의 단색 배경/플레인 버튼으로 폴백.
+    [SerializeField] private Sprite pickChoicePopupBackground;   // PickChoicePopup_Background
+    [SerializeField] private Sprite firstPickButtonSprite;       // PicChoice_FirstButton (이미지에 "선픽" 텍스트 포함)
+    [SerializeField] private Sprite secondPickButtonSprite;      // PicChoice_SecondButton (이미지에 "후픽" 텍스트 포함)
+    [SerializeField] private Sprite aiChoosingPopupSprite;       // First_Second_Pick_Enemy (이미지만, 텍스트 미사용)
+    [SerializeField] private Sprite pickCompleteNotifySprite;    // Pick_Complete_Notify (이미지 + 동적 텍스트 같이 표시)
+
+    // 드래프트(밴픽)/베팅 단계에 사용할 스프라이트. DraftController가 런타임에 부착되므로 여기서 보관하고 public 접근자로 노출.
+    [SerializeField] private Sprite draftPlayBackgroundSprite;   // Draft_Play_Background
+    [SerializeField] private Sprite selectButtonSprite;          // Select_Button (결정/픽 버튼)
+    [SerializeField] private Sprite battingBackgroundSprite;     // Batting_Background (베팅 팝업 박스 배경)
+    [SerializeField] private Sprite plus5ButtonSprite;           // Plus_5_Button (+5 버튼)
+    [SerializeField] private Sprite minus5ButtonSprite;          // Minus_5_Button (-5 버튼)
+    [SerializeField] private Sprite battingSelectButtonSprite;   // Batting_Select_Button (베팅 확정 버튼)
+
+    // DraftController에서 참조하기 위한 public 접근자
+    public Sprite DraftPlayBackgroundSprite => draftPlayBackgroundSprite;
+    public Sprite SelectButtonSprite => selectButtonSprite;
+    public Sprite BattingBackgroundSprite => battingBackgroundSprite;
+    public Sprite Plus5ButtonSprite => plus5ButtonSprite;
+    public Sprite Minus5ButtonSprite => minus5ButtonSprite;
+    public Sprite BattingSelectButtonSprite => battingSelectButtonSprite;
+
     // 씬 상단 Canvas 아래 두 그룹. 선/후픽 결정 단계와 드래프트 단계를 분리하여
     // 활성/비활성으로 화면 전환을 수행한다. 인스펙터에서 미리 만들어두면 그것을 사용,
     // 비어 있으면 EnsureSceneGroups에서 런타임에 자동 생성한다.
@@ -628,30 +651,51 @@ public class PracticeCardController : MonoBehaviour
 
         if (pickChoicePopup == null)
         {
-            pickChoicePopup = CreatePopupPanel("PickChoicePopup_Auto", parent);
-            var title = CreateTmpLabel(pickChoicePopup.transform, "선/후픽을 선택하세요", font, 44f);
-            var titleRt = title.rectTransform;
-            titleRt.anchorMin = new Vector2(0f, 0.55f);
-            titleRt.anchorMax = new Vector2(1f, 1f);
-            titleRt.offsetMin = new Vector2(24f, 0f);
-            titleRt.offsetMax = new Vector2(-24f, -24f);
+            pickChoicePopup = CreatePopupPanel("PickChoicePopup_Auto", parent, pickChoicePopupBackground);
+            // 배경 이미지가 없을 때만 상단 안내 텍스트를 표시 (이미지가 있으면 이미지 자체가 안내 역할)
+            if (pickChoicePopupBackground == null)
+            {
+                var title = CreateTmpLabel(pickChoicePopup.transform, "선/후픽을 선택하세요", font, 44f);
+                var titleRt = title.rectTransform;
+                titleRt.anchorMin = new Vector2(0f, 0.55f);
+                titleRt.anchorMax = new Vector2(1f, 1f);
+                titleRt.offsetMin = new Vector2(24f, 0f);
+                titleRt.offsetMax = new Vector2(-24f, -24f);
+            }
 
             if (firstPickButton == null)
-                firstPickButton = CreateUiButton(pickChoicePopup.transform, "선픽", new Vector2(-140f, -70f), font);
+            {
+                firstPickButton = CreateUiButton(pickChoicePopup.transform, "선픽", new Vector2(-157.8156f, -112.0411f), font, firstPickButtonSprite);
+                ((RectTransform)firstPickButton.transform).sizeDelta = new Vector2(315.6312f, 224.0822f);
+            }
             if (secondPickButton == null)
-                secondPickButton = CreateUiButton(pickChoicePopup.transform, "후픽", new Vector2(140f, -70f), font);
+            {
+                secondPickButton = CreateUiButton(pickChoicePopup.transform, "후픽", new Vector2(114.8993f, -115.05f), font, secondPickButtonSprite);
+                ((RectTransform)secondPickButton.transform).sizeDelta = new Vector2(368.9825f, 218.06f);
+            }
         }
 
         if (aiChoosingPopup == null)
         {
-            aiChoosingPopup = CreatePopupPanel("AiChoosingPopup_Auto", parent);
-            aiChoosingLabel = CreateTmpLabel(aiChoosingPopup.transform, "상대가 선픽, 후픽 고르는 중...", font, 40f);
+            aiChoosingPopup = CreatePopupPanel("AiChoosingPopup_Auto", parent, aiChoosingPopupSprite);
+            // 상대가 선픽 고르는 중 팝업은 이미지가 있으면 텍스트를 생성하지 않음 (이미지만 사용)
+            if (aiChoosingPopupSprite == null)
+            {
+                aiChoosingLabel = CreateTmpLabel(aiChoosingPopup.transform, "상대가 선픽, 후픽 고르는 중...", font, 40f);
+            }
         }
 
         if (draftTransitionPopup == null)
         {
-            draftTransitionPopup = CreatePopupPanel("DraftTransitionPopup_Auto", parent);
+            draftTransitionPopup = CreatePopupPanel("DraftTransitionPopup_Auto", parent, pickCompleteNotifySprite);
+            // 위치 미세 보정 (배경 이미지가 살짝 좌측 치우침을 보정)
+            ((RectTransform)draftTransitionPopup.transform).anchoredPosition = new Vector2(34f, 0f);
+            // 이미지가 있어도 동적 텍스트("상대: 선픽, 나: 후픽 ...")는 항상 위에 같이 표시
             draftTransitionLabel = CreateTmpLabel(draftTransitionPopup.transform, "드래프트로 이동중...", font, 40f);
+            // 라벨을 이미지의 텍스트 영역(우측 살짝 안쪽)으로 정렬 — Left=-12, Top=24, Right=60, Bottom=24
+            var labelRt = draftTransitionLabel.rectTransform;
+            labelRt.offsetMin = new Vector2(-12f, 24f);
+            labelRt.offsetMax = new Vector2(-60f, -24f);
         }
     }
 
@@ -679,8 +723,9 @@ public class PracticeCardController : MonoBehaviour
         return FindObjectOfType<Canvas>();
     }
 
-    // 중앙에 배치된 반투명 어두운 패널 (모든 팝업의 공통 배경)
-    private static GameObject CreatePopupPanel(string name, Transform parent)
+    // 중앙에 배치된 팝업 패널. background sprite가 주어지면 그 이미지를 사용,
+    // 아니면 기존처럼 반투명 어두운 패널로 폴백한다.
+    private static GameObject CreatePopupPanel(string name, Transform parent, Sprite background = null)
     {
         var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         go.transform.SetParent(parent, false);
@@ -688,11 +733,21 @@ public class PracticeCardController : MonoBehaviour
         rt.anchorMin = new Vector2(0.5f, 0.5f);
         rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(720f, 360f);
+        // 이미지가 있을 때는 약 4:3에 가까운 크기로 키워 이미지가 잘 보이도록 함
+        rt.sizeDelta = background != null ? new Vector2(820f, 600f) : new Vector2(720f, 360f);
         rt.anchoredPosition = Vector2.zero;
 
         var img = go.GetComponent<Image>();
-        img.color = new Color(0f, 0f, 0f, 0.85f);
+        if (background != null)
+        {
+            img.sprite = background;
+            img.color = Color.white;
+            img.preserveAspect = true;
+        }
+        else
+        {
+            img.color = new Color(0f, 0f, 0f, 0.85f);
+        }
 
         go.transform.SetAsLastSibling(); // 다른 UI 위에 오도록
         return go;
@@ -718,8 +773,9 @@ public class PracticeCardController : MonoBehaviour
         return tmp;
     }
 
-    // 흰색 배경 + 검은 글씨의 단순한 클릭 가능 버튼 생성 (Hover/Pressed 컬러 포함)
-    private static Button CreateUiButton(Transform parent, string label, Vector2 anchoredPosition, TMP_FontAsset font)
+    // 클릭 가능한 버튼 생성. sprite가 주어지면 이미지 버튼(텍스트는 이미지에 포함되어 있다고 가정),
+    // 없으면 기존처럼 흰색 배경 + 검은 글씨 버튼으로 폴백.
+    private static Button CreateUiButton(Transform parent, string label, Vector2 anchoredPosition, TMP_FontAsset font, Sprite sprite = null)
     {
         var go = new GameObject("Button_" + label,
             typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
@@ -728,11 +784,21 @@ public class PracticeCardController : MonoBehaviour
         rt.anchorMin = new Vector2(0.5f, 0.5f);
         rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(220f, 90f);
+        // 이미지 버튼은 약간 더 크게 (sprite 1.5:1 비율을 살리기 위함)
+        rt.sizeDelta = sprite != null ? new Vector2(300f, 200f) : new Vector2(220f, 90f);
         rt.anchoredPosition = anchoredPosition;
 
         var img = go.GetComponent<Image>();
-        img.color = Color.white;
+        if (sprite != null)
+        {
+            img.sprite = sprite;
+            img.color = Color.white;
+            img.preserveAspect = true;
+        }
+        else
+        {
+            img.color = Color.white;
+        }
 
         var btn = go.GetComponent<Button>();
         var colors = btn.colors;
@@ -741,8 +807,12 @@ public class PracticeCardController : MonoBehaviour
         colors.pressedColor = new Color(0.7f, 0.7f, 0.7f, 1f);
         btn.colors = colors;
 
-        var labelTmp = CreateTmpLabel(go.transform, label, font, 36f);
-        labelTmp.color = Color.black;
+        // sprite에 텍스트가 포함되어 있으면 별도 라벨을 만들지 않음 (중복 방지)
+        if (sprite == null)
+        {
+            var labelTmp = CreateTmpLabel(go.transform, label, font, 36f);
+            labelTmp.color = Color.black;
+        }
         return btn;
     }
 

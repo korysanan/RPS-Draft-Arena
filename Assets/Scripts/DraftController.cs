@@ -482,9 +482,15 @@ public class DraftController : MonoBehaviour
 
         var rootRt = (RectTransform)transform;
 
-        // 전체 배경 (흰색)
+        // 전체 배경 — PracticeCardController에서 받은 sprite를 사용, 없으면 흰색 폴백
         var bg = MakeRect("Background", rootRt, Vector2.zero, Vector2.one);
-        AddImage(bg, Color.white);
+        var bgImg = AddImage(bg, Color.white);
+        var bgSprite = practiceController != null ? practiceController.DraftPlayBackgroundSprite : null;
+        if (bgSprite != null)
+        {
+            bgImg.sprite = bgSprite;
+            // 배경은 화면을 가득 채워야 하므로 preserveAspect는 끔
+        }
 
         var left = MakeColumn("LeftColumn", 0f, 0.2f);
         var center = MakeColumn("CenterColumn", 0.2f, 0.8f);
@@ -630,12 +636,22 @@ public class DraftController : MonoBehaviour
             }
         }
 
-        // 하단 중앙 "결정" 버튼: 플레이어가 카드를 선택한 뒤 눌러야 픽이 확정된다.
+        // 하단 중앙 결정 버튼: 플레이어가 카드를 선택한 뒤 눌러야 픽이 확정된다.
         // 카드 영역(y 0.1) 아래 빈 공간(0.0~0.1)에 가로 30% 폭으로 배치.
         var confirmRect = MakeRect("ConfirmPickButton", col, new Vector2(0.35f, 0.02f), new Vector2(0.65f, 0.1f));
         var confirmImg = AddImage(confirmRect, Color.white);
-        var confirmLbl = AddTmpLabel(confirmRect, "결정", 28f, TextAlignmentOptions.Center);
-        confirmLbl.color = Color.black;
+        var selectSprite = practiceController != null ? practiceController.SelectButtonSprite : null;
+        if (selectSprite != null)
+        {
+            confirmImg.sprite = selectSprite;
+            confirmImg.preserveAspect = true;
+        }
+        else
+        {
+            // sprite 미지정 시에만 텍스트 폴백 — sprite 있으면 이미지에 텍스트 포함되어 있다고 가정하고 라벨 생략
+            var confirmLbl = AddTmpLabel(confirmRect, "결정", 28f, TextAlignmentOptions.Center);
+            confirmLbl.color = Color.black;
+        }
 
         confirmPickButton = confirmRect.gameObject.AddComponent<Button>();
         confirmPickButton.targetGraphic = confirmImg;
@@ -968,7 +984,18 @@ public class DraftController : MonoBehaviour
         boxRt.pivot = new Vector2(0.5f, 0.5f);
         boxRt.sizeDelta = new Vector2(760f, 520f);
         boxRt.anchoredPosition = Vector2.zero;
-        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
+        var boxImg = box.GetComponent<Image>();
+        var battingBg = practiceController != null ? practiceController.BattingBackgroundSprite : null;
+        if (battingBg != null)
+        {
+            boxImg.sprite = battingBg;
+            boxImg.color = Color.white;
+            boxImg.preserveAspect = true;
+        }
+        else
+        {
+            boxImg.color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
+        }
 
         // 타이틀
         var titleRect = MakeRect("Title", boxRt, new Vector2(0f, 0.80f), new Vector2(1f, 0.95f));
@@ -991,10 +1018,16 @@ public class DraftController : MonoBehaviour
         betValueLabel = AddTmpLabel(valueRect, $"{currentBetValue}pt", 50f, TextAlignmentOptions.Center);
         betValueLabel.color = Color.white;
 
+        // 스프라이트 미리 캐시
+        var minusSprite = practiceController != null ? practiceController.Minus5ButtonSprite : null;
+        var plusSprite = practiceController != null ? practiceController.Plus5ButtonSprite : null;
+        var betConfirmSprite = practiceController != null ? practiceController.BattingSelectButtonSprite : null;
+
         if (!forced)
         {
             var minusRect = MakeRect("MinusBtn", boxRt, new Vector2(0.06f, 0.32f), new Vector2(0.20f, 0.54f));
             var minusImg = AddImage(minusRect, Color.white);
+            if (minusSprite != null) { minusImg.sprite = minusSprite; minusImg.preserveAspect = true; }
             var minusLbl = AddTmpLabel(minusRect, "-5", 32f, TextAlignmentOptions.Center);
             minusLbl.color = Color.black;
             betMinusBtn = minusRect.gameObject.AddComponent<Button>();
@@ -1006,6 +1039,7 @@ public class DraftController : MonoBehaviour
 
             var plusRect = MakeRect("PlusBtn", boxRt, new Vector2(0.80f, 0.32f), new Vector2(0.94f, 0.54f));
             var plusImg = AddImage(plusRect, Color.white);
+            if (plusSprite != null) { plusImg.sprite = plusSprite; plusImg.preserveAspect = true; }
             var plusLbl = AddTmpLabel(plusRect, "+5", 32f, TextAlignmentOptions.Center);
             plusLbl.color = Color.black;
             betPlusBtn = plusRect.gameObject.AddComponent<Button>();
@@ -1026,6 +1060,7 @@ public class DraftController : MonoBehaviour
         // 확정 버튼
         var confirmRect = MakeRect("ConfirmBtn", boxRt, new Vector2(0.30f, 0.06f), new Vector2(0.70f, 0.26f));
         var confirmImg = AddImage(confirmRect, Color.white);
+        if (betConfirmSprite != null) { confirmImg.sprite = betConfirmSprite; confirmImg.preserveAspect = true; }
         var confirmLbl = AddTmpLabel(confirmRect, "확정", 30f, TextAlignmentOptions.Center);
         confirmLbl.color = Color.black;
         var confirmBtn = confirmRect.gameObject.AddComponent<Button>();
