@@ -47,6 +47,7 @@ public class CardFlip : MonoBehaviour
     {
         if (flipped) return;
         flipped = true;
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.PlayCardFlip();
         OnFlipStarted?.Invoke(this);
         StartCoroutine(FlipRoutine());
     }

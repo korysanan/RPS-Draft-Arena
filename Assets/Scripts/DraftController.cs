@@ -149,6 +149,7 @@ public class DraftController : MonoBehaviour
         currentPickIndex = 0;
         playerCursor = 0;
         aiCursor = 0;
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.PlayDraftBgm();
         AdvanceTurn();
     }
 
@@ -363,6 +364,7 @@ public class DraftController : MonoBehaviour
 
     private void RecordPick(bool isPlayer, ElementType element)
     {
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.PlayDraftCardPick();
         // 사이드 패널 슬롯에는 와이드 Pick 이미지를 표시 (없으면 Card 이미지로 폴백)
         var slotSprite = GetPickSprite(element) ?? GetCardSprite(element);
         if (isPlayer)
@@ -693,6 +695,7 @@ public class DraftController : MonoBehaviour
     // 14턴 드래프트가 끝나면 호출. 중앙 컬럼을 비우고 "패 확인" UI를 그린 뒤 30초 카운트다운.
     private void EnterHandReviewPhase()
     {
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.StopDraftBgm();
         // 픽 단계 UI 모두 제거 + 잔여 참조 정리
         if (centerColTransform != null)
         {

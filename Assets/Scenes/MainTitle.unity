@@ -298,9 +298,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: abeaf5ca3f7701447976a20b818d441d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
   nextSceneName: Main_Home
+  bgmClip: {fileID: 8300000, guid: 8f91db30c63ce40f59e1897abb6fc3dc, type: 3}
+  enterButtonClip: {fileID: 8300000, guid: ad028bf66e41e41cfa90a1acf573f091, type: 3}
+  bgmVolume: 0.6
+  sfxVolume: 1
 --- !u!1 &2000000000
 GameObject:
   m_ObjectHideFlags: 0
@@ -495,6 +499,7 @@ GameObject:
   - component: {fileID: 3000000012}
   - component: {fileID: 3000000013}
   - component: {fileID: 3000000014}
+  - component: {fileID: 3000000015}
   m_Layer: 5
   m_Name: EnterButton
   m_TagString: Untagged
@@ -690,6 +695,67 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!114 &3000000015
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3000000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d22e5b8e4f9b5c5cad2e6f3e7b8c9d02, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+--- !u!1 &4000000000
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4000000001}
+  - component: {fileID: 4000000002}
+  m_Layer: 0
+  m_Name: UIAudioManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4000000001
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000000}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4000000002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4000000000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c11c4a7d3e8f4a4b9c1f5e2d6a7b8c91, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  clickClip: {fileID: 8300000, guid: 415551e563f8245af91c18852c82eefa, type: 3}
+  volume: 1
+  excludedScenes:
+  - Practice
+  - PracticeMode
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -698,3 +764,4 @@ SceneRoots:
   - {fileID: 1000000001}
   - {fileID: 2000000001}
   - {fileID: 3000000001}
+  - {fileID: 4000000001}
