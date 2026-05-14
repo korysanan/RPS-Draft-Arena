@@ -1402,9 +1402,9 @@ MonoBehaviour:
   draftPlayBackgroundSprite: {fileID: 7898836812066141321, guid: 91d063e8ff744fb4d9371dc0b1795a62, type: 3}
   selectButtonSprite: {fileID: -6551329220299497731, guid: ff9ff4877f0a49947995c5e741c53fdc, type: 3}
   battingBackgroundSprite: {fileID: 4002634972903565961, guid: 42719a6be3f056f44a46e461a5a5688f, type: 3}
-  plus5ButtonSprite: {fileID: -8971730604651120121, guid: beb9de60afe9ac143bf11e3f0765debe, type: 3}
-  minus5ButtonSprite: {fileID: -2032743319288184375, guid: c443ff5f751c21a438b127b7f3b70ece, type: 3}
-  battingSelectButtonSprite: {fileID: -9126606637615351801, guid: de1f0df5f04aca44498c9e5ff07b6b70, type: 3}
+  plus5ButtonSprite: {fileID: 9062788436568362780, guid: 76cef5835c4247848a2729c8caede0ae, type: 3}
+  minus5ButtonSprite: {fileID: -7334218718252379959, guid: b8ebd51b27cadb440bac4fe430ee45dc, type: 3}
+  battingSelectButtonSprite: {fileID: -3324833276754196223, guid: e88b3a19cae73104587fdb79467f0763, type: 3}
   decidingGroup: {fileID: 0}
   draftGroup: {fileID: 0}
   aiPickDelayMin: 0.4

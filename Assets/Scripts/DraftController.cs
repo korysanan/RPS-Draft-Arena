@@ -371,7 +371,10 @@ public class DraftController : MonoBehaviour
             {
                 playerSlotLabels[playerCursor].text = string.Empty; // 카드 이미지가 자리하므로 텍스트는 비움
                 if (playerCursor < playerSlotCards.Count && playerSlotCards[playerCursor] != null)
+                {
                     playerSlotCards[playerCursor].sprite = slotSprite;
+                    playerSlotCards[playerCursor].enabled = slotSprite != null;
+                }
                 playerCursor++;
             }
             playerPickHistory.Add(element);
@@ -382,7 +385,10 @@ public class DraftController : MonoBehaviour
             {
                 aiSlotLabels[aiCursor].text = string.Empty;
                 if (aiCursor < aiSlotCards.Count && aiSlotCards[aiCursor] != null)
+                {
                     aiSlotCards[aiCursor].sprite = slotSprite;
+                    aiSlotCards[aiCursor].enabled = slotSprite != null;
+                }
                 aiCursor++;
             }
             aiPickHistory.Add(element);
@@ -497,8 +503,18 @@ public class DraftController : MonoBehaviour
         var right = MakeColumn("RightColumn", 0.8f, 1f);
         centerColTransform = center; // 순서변경 단계에서 재사용
 
-        playerHeaderLabel = BuildSidePanel(left, "A (Player)", playerSlotLabels, playerSlotCards);
-        aiHeaderLabel = BuildSidePanel(right, "B (Other Player)", aiSlotLabels, aiSlotCards);
+        // LeftColumn Header (inspector: Left=50.16815, Top=103.5002, Right=-3.163649, Bottom=42.03275)
+        playerHeaderLabel = BuildSidePanel(
+            left, "A (Player)", playerSlotLabels, playerSlotCards,
+            slotHorizontalInset: 31f,
+            headerOffsetMin: new Vector2(50.16815f, 42.03275f),
+            headerOffsetMax: new Vector2(3.163649f, -103.5002f));
+        // RightColumn Header (inspector: Left=-4.067551, Top=97.6246, Right=58.75545, Bottom=40.2248)
+        aiHeaderLabel = BuildSidePanel(
+            right, "B (Other Player)", aiSlotLabels, aiSlotCards,
+            slotHorizontalInset: -31f,
+            headerOffsetMin: new Vector2(-4.067551f, 40.2248f),
+            headerOffsetMax: new Vector2(-58.75545f, -97.6246f));
         BuildCenter(center, rpsCount);
         UpdateSidePointsDisplay();
     }
@@ -522,16 +538,18 @@ public class DraftController : MonoBehaviour
 
     // 측면 패널: 상단 헤더(이름 + 시리즈 + 포인트) + 아래 7개 슬롯(번갈아 음영). 헤더 라벨은 포인트 갱신용으로 반환.
     // 픽 시점에 슬롯 내부의 카드 이미지(child Image)에 sprite를 채워 넣는다.
-    private TMP_Text BuildSidePanel(RectTransform col, string headerText, List<TMP_Text> slotOut, List<Image> slotCardOut)
+    private TMP_Text BuildSidePanel(RectTransform col, string headerText, List<TMP_Text> slotOut, List<Image> slotCardOut, float slotHorizontalInset = 0f, Vector2 headerOffsetMin = default, Vector2 headerOffsetMax = default)
     {
         const float headerHeightRatio = 0.20f;
         const float slotsTopRatio = 1f - headerHeightRatio;
 
         // 헤더
         var header = MakeRect("Header", col, new Vector2(0f, slotsTopRatio), new Vector2(1f, 1f));
-        AddImage(header, new Color(0.78f, 0.78f, 0.78f, 1f));
+        header.offsetMin = headerOffsetMin;
+        header.offsetMax = headerOffsetMax;
+        AddImage(header, new Color(0.78f, 0.78f, 0.78f, 1f)).enabled = false;
         var headerLabel = AddTmpLabel(header, headerText, 18f, TextAlignmentOptions.Center);
-        headerLabel.color = Color.black;
+        headerLabel.color = Color.white;
 
         // 슬롯 7개 (헤더 아래 영역을 균등 분할)
         float slotH = slotsTopRatio / PicksPerSide;
@@ -540,12 +558,15 @@ public class DraftController : MonoBehaviour
             float top = slotsTopRatio - i * slotH;
             float bot = top - slotH;
             var slot = MakeRect("Slot" + i, col, new Vector2(0f, bot), new Vector2(1f, top));
+            // 컬럼 안에서 좌/우로 밀고(slotHorizontalInset) 위아래로 50px 안쪽으로 당김 (inspector: Left/Right=±31, Top=-50, Bottom=50)
+            slot.offsetMin = new Vector2(slotHorizontalInset, 50f);
+            slot.offsetMax = new Vector2(slotHorizontalInset, 50f);
             var color = i % 2 == 0
                 ? new Color(0.92f, 0.92f, 0.92f, 1f)
                 : new Color(0.82f, 0.82f, 0.82f, 1f);
-            AddImage(slot, color);
+            AddImage(slot, color).enabled = false;
 
-            // 카드 이미지 자리(child) — 픽 전엔 sprite=null이라 자연스럽게 안 보임. preserveAspect로 카드 비율 유지.
+            // 카드 이미지 자리(child) — 픽 전엔 enabled=false라 흰 박스가 보이지 않음. 픽 확정 시 sprite 주입과 함께 켜진다.
             var cardRt = MakeRect("CardImage", slot, Vector2.zero, Vector2.one);
             cardRt.offsetMin = new Vector2(6f, 4f);
             cardRt.offsetMax = new Vector2(-6f, -4f);
@@ -554,6 +575,7 @@ public class DraftController : MonoBehaviour
             cardImg.raycastTarget = false;
             cardImg.color = Color.white;
             cardImg.sprite = null;
+            cardImg.enabled = false;
             slotCardOut.Add(cardImg);
 
             // 라벨은 빈 문자열로 유지 (사용됨 오버레이 부착 시 slot RT를 찾는 앵커 역할만 함)
@@ -856,7 +878,13 @@ public class DraftController : MonoBehaviour
                 var btn = cardRect.gameObject.AddComponent<Button>();
                 btn.targetGraphic = img;
                 int captured = slotIdx;
-                btn.onClick.AddListener(() => OnMatchCardClicked(captured));
+                var capturedElement = element;
+                // 드래프트와 동일하게: 짧게 클릭=선택 / 1초 길게 누름=상성표 표시. interactable 게이팅은 Button을 통해 그대로 작동한다.
+                var press = cardRect.gameObject.AddComponent<CardPressHandler>();
+                press.longPressDuration = 1f;
+                press.onClick = () => OnMatchCardClicked(captured);
+                press.onLongPressStart = () => ShowRelationshipChart(capturedElement);
+                press.onLongPressEnd = HideRelationshipChart;
                 matchCardButtons.Add(btn);
                 matchCardImages.Add(img);
 
@@ -997,24 +1025,30 @@ public class DraftController : MonoBehaviour
             boxImg.color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
         }
 
-        // 타이틀
+        // 타이틀 (inspector: Top=60, Bottom=-60)
         var titleRect = MakeRect("Title", boxRt, new Vector2(0f, 0.80f), new Vector2(1f, 0.95f));
+        titleRect.offsetMin = new Vector2(0f, -60f);
+        titleRect.offsetMax = new Vector2(0f, -60f);
         var title = AddTmpLabel(titleRect,
             forced ? $"최종 매치 — 남은 포인트 전액 베팅" : $"포인트 베팅 — 매치 {currentMatchIndex + 1}/{TotalMatches}",
             30f, TextAlignmentOptions.Center);
         title.color = new Color(1f, 0.85f, 0.4f, 1f);
 
-        // 정보
+        // 정보 (inspector: Top=28.4, Bottom=-28.4)
         var infoRect = MakeRect("Info", boxRt, new Vector2(0.05f, 0.58f), new Vector2(0.95f, 0.79f));
+        infoRect.offsetMin = new Vector2(0f, -28.4f);
+        infoRect.offsetMax = new Vector2(0f, -28.4f);
         string infoText = forced
             ? $"마지막 매치 — 남은 보유 포인트를 자동으로 전액 베팅합니다."
             : $"보유 포인트: {playerWallet}pt\n베팅 범위: {currentBetMin} ~ {currentBetMax}pt\n(남은 매치 {remainingAfter}회 × 최소 {MinBetPerMatch}pt 확보)";
         var infoLbl = AddTmpLabel(infoRect, infoText, 22f, TextAlignmentOptions.Center);
         infoLbl.color = Color.white;
 
-        // 값 표시
+        // 값 표시 (inspector: Left=55.3593, Top=12.59815, Right=57.3463, Bottom=31.38655 / 배경 Image는 끔)
         var valueRect = MakeRect("Value", boxRt, new Vector2(0.22f, 0.32f), new Vector2(0.78f, 0.54f));
-        AddImage(valueRect, new Color(0.2f, 0.2f, 0.2f, 1f));
+        valueRect.offsetMin = new Vector2(55.3593f, 31.38655f);
+        valueRect.offsetMax = new Vector2(-57.3463f, -12.59815f);
+        AddImage(valueRect, new Color(0.2f, 0.2f, 0.2f, 1f)).enabled = false;
         betValueLabel = AddTmpLabel(valueRect, $"{currentBetValue}pt", 50f, TextAlignmentOptions.Center);
         betValueLabel.color = Color.white;
 
@@ -1025,11 +1059,12 @@ public class DraftController : MonoBehaviour
 
         if (!forced)
         {
+            // MinusBtn (inspector: Left=84.1705, Top=12.59815, Right=-63.3031, Bottom=28.85715 / 라벨 없음)
             var minusRect = MakeRect("MinusBtn", boxRt, new Vector2(0.06f, 0.32f), new Vector2(0.20f, 0.54f));
+            minusRect.offsetMin = new Vector2(84.1705f, 28.85715f);
+            minusRect.offsetMax = new Vector2(63.3031f, -12.59815f);
             var minusImg = AddImage(minusRect, Color.white);
             if (minusSprite != null) { minusImg.sprite = minusSprite; minusImg.preserveAspect = true; }
-            var minusLbl = AddTmpLabel(minusRect, "-5", 32f, TextAlignmentOptions.Center);
-            minusLbl.color = Color.black;
             betMinusBtn = minusRect.gameObject.AddComponent<Button>();
             betMinusBtn.targetGraphic = minusImg;
             var mc = betMinusBtn.colors;
@@ -1037,11 +1072,12 @@ public class DraftController : MonoBehaviour
             betMinusBtn.colors = mc;
             betMinusBtn.onClick.AddListener(OnBetMinus);
 
+            // PlusBtn (inspector: Left=-61.7, Top=7.6, Right=89.922, Bottom=24.6952 / 라벨 없음)
             var plusRect = MakeRect("PlusBtn", boxRt, new Vector2(0.80f, 0.32f), new Vector2(0.94f, 0.54f));
+            plusRect.offsetMin = new Vector2(-61.7f, 24.6952f);
+            plusRect.offsetMax = new Vector2(-89.922f, -7.6f);
             var plusImg = AddImage(plusRect, Color.white);
             if (plusSprite != null) { plusImg.sprite = plusSprite; plusImg.preserveAspect = true; }
-            var plusLbl = AddTmpLabel(plusRect, "+5", 32f, TextAlignmentOptions.Center);
-            plusLbl.color = Color.black;
             betPlusBtn = plusRect.gameObject.AddComponent<Button>();
             betPlusBtn.targetGraphic = plusImg;
             var pc = betPlusBtn.colors;
@@ -1057,8 +1093,10 @@ public class DraftController : MonoBehaviour
             betPlusBtn = null;
         }
 
-        // 확정 버튼
+        // 확정 버튼 (inspector: Left=-3.0388, Top=-72.70477, Right=-1.7516, Bottom=62.19138)
         var confirmRect = MakeRect("ConfirmBtn", boxRt, new Vector2(0.30f, 0.06f), new Vector2(0.70f, 0.26f));
+        confirmRect.offsetMin = new Vector2(-3.0388f, 62.19138f);
+        confirmRect.offsetMax = new Vector2(1.7516f, 72.70477f);
         var confirmImg = AddImage(confirmRect, Color.white);
         if (betConfirmSprite != null) { confirmImg.sprite = betConfirmSprite; confirmImg.preserveAspect = true; }
         var confirmLbl = AddTmpLabel(confirmRect, "확정", 30f, TextAlignmentOptions.Center);
