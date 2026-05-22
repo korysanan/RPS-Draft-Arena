@@ -127,6 +127,17 @@ public class DraftController : MonoBehaviour
     // raw 매치업 점수가 비슷할 때 스택되지 않은 원소 쪽으로 동점을 깨주는 역할.
     private const int HARD_OVERSTACK_THRESHOLD = 3;
     private const int HARD_OVERSTACK_PENALTY = -2;
+
+    // Phase 4: 베이지안 상대 모델 파라미터 (Hard + 다판제에서만 동작).
+    private const float BAYES_INITIAL_HONESTY = 0.5f;       // 정직도 사전확률 (0 = 항상 블러프, 1 = 항상 정직)
+    private const float BAYES_INITIAL_AGGRESSION = 0.5f;    // 공격성 사전확률 (0 = 항상 미니멈 베팅, 1 = 항상 올인)
+    private const float BAYES_LEARNING_RATE = 0.3f;         // 매 관측마다 Lerp 갱신 계수
+    private const float BAYES_ROUND_DECAY = 0.7f;           // 라운드 사이 중립값 쪽으로 끌어당기는 강도 (1 = 그대로 유지, 0 = 완전 리셋)
+    private const int BAYES_MIN_OBSERVATIONS = 3;           // 신뢰도 1.0 에 도달하는 관측 수
+
+    // 모델이 AI 베팅 베이스라인에 영향을 주는 강도.
+    private const float BAYES_AGGRESSION_INFLUENCE = 0.3f;
+    private const float BAYES_HONESTY_INFLUENCE = 0.2f;
     // wallet: 베팅 가능 풀 (시작 100, 최대 100). 베팅 시 차감, 무승부/승리 시 회수, 패배 시 영구 손실.
     private int playerWallet;
     private int aiWallet;
@@ -139,6 +150,12 @@ public class DraftController : MonoBehaviour
 
     // 매치 카드 선택 시마다 호출 단위 할당을 피하려고 재사용하는 후보 버퍼. capacity = aiUsed.Length (PicksPerSide).
     private readonly List<int> matchPickCandidates = new List<int>(PicksPerSide);
+
+    // Phase 4: 베이지안 상대 모델 상태. 시리즈 단위로 누적, 라운드 사이에 중립값 쪽으로 부드럽게 감쇠.
+    // Hard + 다판제에서만 갱신/사용. 다른 모드에서는 초기값으로 고정.
+    private float playerHonesty = BAYES_INITIAL_HONESTY;
+    private float playerAggression = BAYES_INITIAL_AGGRESSION;
+    private int bayesObservationCount = 0;
     // 베팅 팝업 상태/UI
     private GameObject betPopup;
     private TMP_Text betValueLabel;
@@ -163,6 +180,13 @@ public class DraftController : MonoBehaviour
     {
         font = fontAsset;
         practiceController = controller;
+
+        // Phase 4: 라운드 1 (= 시리즈 첫 라운드) → 베이지안 모델 완전 초기화. 그 외 라운드 → 중립값 쪽으로 감쇠.
+        // Hard + 다판제가 아니면 두 메서드 모두 내부에서 early-return.
+        if (SeriesState.CurrentRound <= 1)
+            ResetBayesianModel();
+        else
+            DecayBayesianModelForNewRound();
 
         // 이전 라운드의 잔여 오버레이/팝업 정리
         if (finalOrderOverlay != null) { Destroy(finalOrderOverlay); finalOrderOverlay = null; }
@@ -1346,6 +1370,30 @@ public class DraftController : MonoBehaviour
             desiredBet *= GetSeriesMultiplier();
         }
 
+        // Phase 4 (Hard + 다판제): 베이지안 모델로 베이스라인 미세 조정.
+        // confidence 가중치를 곱해서 초반 관측 부족 시에는 영향을 거의 안 주도록 함.
+        if (difficulty == PracticeSetupManager.AIDifficulty.Hard && SeriesState.TotalRounds > 1)
+        {
+            float bayesConfidence = GetBayesConfidence();
+
+            // 공격성 시프트: 상대가 평균보다 크게 베팅하는 성향이면 AI 도 따라 키움.
+            float aggressionShift = (playerAggression - BAYES_INITIAL_AGGRESSION)
+                                    * BAYES_AGGRESSION_INFLUENCE
+                                    * bayesConfidence;
+            desiredBet *= (1f + aggressionShift);
+
+            // 정직도 조정은 AI 가 유리한 매치업일 때만 적용.
+            //   정직한 상대 = 예측 가능 → AI 가 우위에서 더 크게 누르기 좋음
+            //   기만적 상대 = 블러프 가능성 → AI 도 우위에서 베팅을 살짝 줄여 헷지
+            if (edge > 0f)
+            {
+                float honestyAdjust = (playerHonesty - BAYES_INITIAL_HONESTY)
+                                      * BAYES_HONESTY_INFLUENCE
+                                      * bayesConfidence;
+                desiredBet *= (1f + honestyAdjust);
+            }
+        }
+
         // Hard 전용: 매치업이 불리할 때 낮은 확률로 블러프.
         if (difficulty == PracticeSetupManager.AIDifficulty.Hard
             && edge < 0f
@@ -1419,6 +1467,123 @@ public class DraftController : MonoBehaviour
         int steps = (max - min) / MinBetPerMatch;
         int randSteps = Random.Range(0, steps + 1);
         return min + randSteps * MinBetPerMatch;
+    }
+
+    // ── Phase 4: 베이지안 상대 모델 ──────────────────────────────────────
+    // Hard + 다판제에서만 동작. Easy/Normal/단판제에서는 모든 메서드가 early-return 하므로
+    // 상태값이 초기값으로 고정되고 DecideAiBet 의 Bayesian 조정 블록도 효과가 0.
+
+    // 방금 끝난 매치 데이터로 모델 갱신.
+    // matchIndex: 방금 끝난 매치의 인덱스 (호출 시점의 currentMatchIndex).
+    private void UpdateBayesianModel(int matchIndex)
+    {
+        if (PracticeSettings.Difficulty != PracticeSetupManager.AIDifficulty.Hard) return;
+        if (SeriesState.TotalRounds <= 1) return;  // 단판제는 학습 가치 부족 (최대 5샘플 + 마지막 매치는 어차피 강제 전액)
+
+        if (matchIndex < 0 || matchIndex >= playerMatchHistory.Count) return;  // 방어용
+        if (matchIndex >= playerBetHistory.Count) return;                       // 방어용
+
+        ElementType playerCard = playerMatchHistory[matchIndex];
+        int playerBet = playerBetHistory[matchIndex];
+
+        // 1. 이 매치 시점에서 상대 카드가 AI 풀 대비 어떤 edge 였는지 재구성
+        float playerEdge = EstimateHistoricalPlayerEdge(matchIndex, playerCard);
+
+        // 2. 베팅이 중립 베이스라인(NEUTRAL_BET_PER_MATCH = 20pt) 대비 얼마나 큰지 정규화
+        float betDeviation = (playerBet - NEUTRAL_BET_PER_MATCH) / (float)NEUTRAL_BET_PER_MATCH;
+        betDeviation = Mathf.Clamp(betDeviation, -1f, 1f);
+
+        // 3. 정직도 신호:
+        //    edge 부호 == 베팅 편차 부호 → 정직 (강한 카드를 크게 베팅 / 약한 카드를 작게 베팅)
+        //    부호가 다름 → 기만적 (강한 카드를 작게 / 약한 카드를 크게)
+        float honestySignal;
+        if (Mathf.Sign(playerEdge) == Mathf.Sign(betDeviation))
+            honestySignal = Mathf.Abs(playerEdge * betDeviation);  // 양쪽 모두 극단이면 강한 신호
+        else
+            honestySignal = -Mathf.Abs(playerEdge * betDeviation);
+        honestySignal = (honestySignal + 1f) * 0.5f;  // [-1, +1] → [0, 1]
+
+        // 4. Lerp 증분 갱신
+        playerHonesty = Mathf.Lerp(playerHonesty, honestySignal, BAYES_LEARNING_RATE);
+
+        // 5. 공격성: 베팅의 절대 크기를 시작 자금 대비 비율로 본 이동평균
+        float observedAggression = playerBet / (float)StartingPoints;
+        playerAggression = Mathf.Lerp(playerAggression, observedAggression, BAYES_LEARNING_RATE);
+
+        bayesObservationCount++;
+
+#if UNITY_EDITOR
+        Debug.Log($"[Bayes] match={matchIndex + 1} playerEdge={playerEdge:F2} " +
+                  $"betDev={betDeviation:F2} → honesty={playerHonesty:F2} " +
+                  $"aggr={playerAggression:F2} conf={GetBayesConfidence():F2}");
+#endif
+    }
+
+    // matchIndex 매치 시점에서 상대 카드(playerCard)가 AI 의 "그 시점 남은 풀" 대비 어떤 edge 였는지 재구성.
+    // 모델이 매치 종료 후에 갱신되므로 카드가 이미 소모된 뒤라 이렇게 거꾸로 계산해야 함.
+    // 한계: AI 가 같은 원소를 중복 드래프트한 경우 (예: Fire ×2), 소모 추적이 슬롯이 아닌 원소 기준이라
+    //       이전 매치에서 Fire 하나가 소모됐다면 남은 Fire 도 소모된 것으로 잡힘. v1 허용 오차로 둠 — 모델을
+    //       망가뜨리진 않고 중복 사용 케이스에서만 살짝 편향됨.
+    private float EstimateHistoricalPlayerEdge(int matchIndex, ElementType playerCard)
+    {
+        int totalRemaining = 0;
+        int score = 0;
+
+        for (int s = 0; s < aiPickHistory.Count; s++)
+        {
+            ElementType aiCard = aiPickHistory[s];
+
+            // 이 AI 카드가 matchIndex 이전 매치에서 이미 소모됐는가?
+            bool consumedBefore = false;
+            for (int m = 0; m < matchIndex; m++)
+            {
+                if (m < aiMatchHistory.Count && aiMatchHistory[m] == aiCard)
+                {
+                    consumedBefore = true;
+                    break;
+                }
+            }
+            if (consumedBefore) continue;
+
+            totalRemaining++;
+            if (TypeChart.Beats(playerCard, aiCard)) score++;
+            else if (TypeChart.Beats(aiCard, playerCard)) score--;
+            // 같은 속성(Tie)이면 점수 변화 없음
+        }
+
+        return totalRemaining > 0 ? (float)score / totalRemaining : 0f;
+    }
+
+    // 신뢰도 가중치: 관측 수가 0 이면 0, BAYES_MIN_OBSERVATIONS 도달 시 1.0.
+    // 초반 표본 부족 시 모델 영향력을 자동으로 깎는 역할.
+    private float GetBayesConfidence()
+    {
+        return Mathf.Clamp01(bayesObservationCount / (float)BAYES_MIN_OBSERVATIONS);
+    }
+
+    // 라운드 사이에 모델을 중립값 쪽으로 부드럽게 감쇠 (라운드 2 이상부터).
+    // observationCount 는 일부러 보존 → 시리즈 전체에 걸쳐 신뢰도는 계속 누적.
+    private void DecayBayesianModelForNewRound()
+    {
+        if (PracticeSettings.Difficulty != PracticeSetupManager.AIDifficulty.Hard) return;
+        if (SeriesState.TotalRounds <= 1) return;
+        if (SeriesState.CurrentRound <= 1) return;  // 라운드 1: 아직 감쇠할 데이터 없음
+
+        playerHonesty = Mathf.Lerp(BAYES_INITIAL_HONESTY, playerHonesty, BAYES_ROUND_DECAY);
+        playerAggression = Mathf.Lerp(BAYES_INITIAL_AGGRESSION, playerAggression, BAYES_ROUND_DECAY);
+
+#if UNITY_EDITOR
+        Debug.Log($"[Bayes] round-decay → honesty={playerHonesty:F2} aggr={playerAggression:F2} (round {SeriesState.CurrentRound})");
+#endif
+    }
+
+    // 시리즈 첫 라운드 시작 시 모델을 사전확률로 완전 초기화.
+    // 시리즈 재시작 (Practice 씬 재로드) 시에는 DraftController 자체가 새로 생성되므로 필드 이니셜라이저가 같은 효과를 냄.
+    private void ResetBayesianModel()
+    {
+        playerHonesty = BAYES_INITIAL_HONESTY;
+        playerAggression = BAYES_INITIAL_AGGRESSION;
+        bayesObservationCount = 0;
     }
 
     // 이번 매치에 낼 AI 카드(슬롯)를 선택.
@@ -1915,6 +2080,10 @@ public class DraftController : MonoBehaviour
         aiMatchHistory.Add(aiElem);
         playerBetHistory.Add(playerBet);
         aiBetHistory.Add(aiBet);
+
+        // Phase 4: 방금 끝난 매치 데이터로 베이지안 모델 갱신.
+        // currentMatchIndex 는 이 시점에 "방금 끝난 매치"의 인덱스 (BeginMatch 에서 세팅된 값, 다음 BeginMatch 전까지 증가 안 됨).
+        UpdateBayesianModel(currentMatchIndex);
 
         // 베팅 잠금
         playerWallet -= playerBet;
