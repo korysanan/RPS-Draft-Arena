@@ -512,8 +512,9 @@ public class DraftController : MonoBehaviour
             headerOffsetMin: new Vector2(50.16815f, 42.03275f),
             headerOffsetMax: new Vector2(3.163649f, -103.5002f));
         // RightColumn Header (inspector: Left=-4.067551, Top=97.6246, Right=58.75545, Bottom=40.2248)
+        // "B (Other Player)" 대신 AI 난이도를 헤더에 직접 표기 (별도 난이도 라벨은 제거됨)
         aiHeaderLabel = BuildSidePanel(
-            right, "B (Other Player)", aiSlotLabels, aiSlotCards,
+            right, $"B (난이도 : {DifficultyKor(PracticeSettings.Difficulty)})", aiSlotLabels, aiSlotCards,
             slotHorizontalInset: -31f,
             headerOffsetMin: new Vector2(-4.067551f, 40.2248f),
             headerOffsetMax: new Vector2(-58.75545f, -97.6246f));
@@ -527,7 +528,7 @@ public class DraftController : MonoBehaviour
         if (playerHeaderLabel != null)
             playerHeaderLabel.text = $"A (Player)\n시리즈 {SeriesState.PlayerScore}승  (목표 {SeriesState.RoundsToWin}승)\n보유 {playerWallet}pt  수익 {FormatSigned(playerEarnings)}";
         if (aiHeaderLabel != null)
-            aiHeaderLabel.text = $"B (Other Player)\n시리즈 {SeriesState.AiScore}승  (목표 {SeriesState.RoundsToWin}승)\n보유 {aiWallet}pt  수익 {FormatSigned(aiEarnings)}";
+            aiHeaderLabel.text = $"B (난이도 : {DifficultyKor(PracticeSettings.Difficulty)})\n시리즈 {SeriesState.AiScore}승  (목표 {SeriesState.RoundsToWin}승)\n보유 {aiWallet}pt  수익 {FormatSigned(aiEarnings)}";
     }
 
     private static string FormatSigned(int v) => v > 0 ? "+" + v : v.ToString();
@@ -588,23 +589,22 @@ public class DraftController : MonoBehaviour
         return headerLabel;
     }
 
-    // 중앙: 타이틀("밴픽 시스템") + 정보 라벨("남은 시간 / 차례") + 가운데 카드 영역
+    // 중앙: 홈 버튼 + 정보 라벨("남은 시간 / 차례") + 가운데 카드 영역
     private void BuildCenter(RectTransform col, int rpsCount)
     {
-        // 타이틀
-        var titleRect = MakeRect("Title", col, new Vector2(0f, 0.92f), new Vector2(1f, 1f));
-        var titleLbl = AddTmpLabel(titleRect, "밴픽 시스템", 36f, TextAlignmentOptions.Center);
-        titleLbl.color = Color.black;
+        // 최상단 중앙: 홈 버튼 — 누르면 확인 팝업 표시. Draft 루트에 부착되어 단계 전환 후에도 유지된다.
+        BuildHomeButton();
 
         // 타이머/턴 라벨 (현재는 턴 안내로 사용; 타이머 텍스트는 placeholder)
         var infoRect = MakeRect("Info", col, new Vector2(0f, 0.84f), new Vector2(1f, 0.92f));
         turnLabel = AddTmpLabel(infoRect, "남은 시간 : 00s", 24f, TextAlignmentOptions.Center);
-        turnLabel.color = Color.black;
+        turnLabel.color = Color.white;
+        // 인스펙터 기준 Top=100, Bottom=-90 (= offsetMax.y=-100, offsetMin.y=-90) — 카드 영역 쪽으로 내려서 배치
+        var turnLabelRt = turnLabel.rectTransform;
+        turnLabelRt.offsetMin = new Vector2(turnLabelRt.offsetMin.x, -90f);
+        turnLabelRt.offsetMax = new Vector2(turnLabelRt.offsetMax.x, -100f);
 
-        // 난이도 표시 (테스트 편의용)
-        var diffRect = MakeRect("Difficulty", col, new Vector2(0f, 0.78f), new Vector2(1f, 0.84f));
-        var diffLbl = AddTmpLabel(diffRect, $"AI 난이도: {DifficultyKor(PracticeSettings.Difficulty)}", 20f, TextAlignmentOptions.Center);
-        diffLbl.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+        // 난이도는 우측 B 헤더에 표기됨 → 별도 라벨 제거.
 
         // 카드 영역
         var cardArea = MakeRect("Cards", col, new Vector2(0.05f, 0.1f), new Vector2(0.95f, 0.82f));
@@ -690,6 +690,89 @@ public class DraftController : MonoBehaviour
         confirmPickButton.interactable = false; // 시작 시: 선택된 카드가 없으므로 비활성
     }
 
+    // 드래프트 화면 최상단 중앙의 홈 버튼. 클릭 시 확인 팝업을 띄우고, "돌아가기"면 PracticeMode 씬으로 복귀.
+    // Draft 루트(transform)에 직접 부착해서 centerColTransform 자식이 통째로 파괴되는
+    // EnterHandReviewPhase / BeginMatch 사이에도 유지되도록 한다.
+    private GameObject draftHomeConfirmPopup;
+    private GameObject draftHomeButton;
+
+    private void BuildHomeButton()
+    {
+        if (draftHomeButton != null) return; // 이미 만들어졌으면 재사용 (단계 전환 후에도 살아 있음)
+
+        var rootRt = (RectTransform)transform;
+        // 중앙 컬럼이 화면의 x 0.2~0.8(폭 60%)에 있으므로, 그 안에서 x 0.4~0.6에 해당하는
+        // 루트 좌표 x 0.44~0.56로 배치하면 동일한 가운데 위치가 된다.
+        var rect = MakeRect("HomeButton", rootRt, new Vector2(0.44f, 0.93f), new Vector2(0.56f, 1.00f));
+        // 인스펙터 기준 Top=35, Bottom=-35 (= offsetMax.y=-35, offsetMin.y=-35)
+        rect.offsetMin = new Vector2(rect.offsetMin.x, -35f);
+        rect.offsetMax = new Vector2(rect.offsetMax.x, -35f);
+        // 살짝 축소해서 다른 UI와 균형 (Scale 0.85)
+        rect.localScale = new Vector3(0.85f, 0.85f, 0.85f);
+        rect.SetAsLastSibling(); // 다른 단계 UI 위에 그려지도록
+        var sprite = practiceController != null ? practiceController.HomeButtonSprite : null;
+        var img = AddImage(rect, Color.white);
+        if (sprite != null)
+        {
+            img.sprite = sprite;
+            img.preserveAspect = true;
+        }
+        else
+        {
+            // 스프라이트가 없으면 기존의 흰색 박스 + "홈" 텍스트 폴백
+            img.color = new Color(0.95f, 0.95f, 0.95f, 1f);
+            var lbl = AddTmpLabel(rect, "홈", 24f, TextAlignmentOptions.Center);
+            lbl.color = Color.black;
+        }
+        var btn = rect.gameObject.AddComponent<Button>();
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(OnDraftHomeButtonClicked);
+        draftHomeButton = rect.gameObject;
+    }
+
+    private void OnDraftHomeButtonClicked()
+    {
+        EnsureDraftHomeConfirmPopup();
+        if (draftHomeConfirmPopup != null) draftHomeConfirmPopup.SetActive(true);
+    }
+
+    // 확인 팝업을 한 번만 생성해서 재사용. Draft 루트(transform) 직속 자식으로 두어 모든 단계에서 위에 뜨도록 함.
+    private void EnsureDraftHomeConfirmPopup()
+    {
+        if (draftHomeConfirmPopup != null) return;
+
+        var rootRt = (RectTransform)transform;
+        var overlayRt = MakeRect("HomeConfirmPopup", rootRt, Vector2.zero, Vector2.one);
+        AddImage(overlayRt, new Color(0f, 0f, 0f, 0.6f));
+
+        var dialogRt = MakeRect("Dialog", overlayRt, new Vector2(0.3f, 0.36f), new Vector2(0.7f, 0.64f));
+        AddImage(dialogRt, new Color(0.95f, 0.95f, 0.95f, 1f));
+
+        var msgRt = MakeRect("Message", dialogRt, new Vector2(0f, 0.5f), new Vector2(1f, 1f));
+        var msgLbl = AddTmpLabel(msgRt, "홈으로 돌아가시겠습니까?\n(진행 중인 라운드는 사라집니다)", 26f, TextAlignmentOptions.Center);
+        msgLbl.color = Color.black;
+
+        var returnRt = MakeRect("Return", dialogRt, new Vector2(0.08f, 0.12f), new Vector2(0.46f, 0.42f));
+        var returnImg = AddImage(returnRt, new Color(0.85f, 0.25f, 0.25f, 1f));
+        var returnBtn = returnRt.gameObject.AddComponent<Button>();
+        returnBtn.targetGraphic = returnImg;
+        var returnLbl = AddTmpLabel(returnRt, "돌아가기", 22f, TextAlignmentOptions.Center);
+        returnLbl.color = Color.white;
+        returnBtn.onClick.AddListener(() => UnityEngine.SceneManagement.SceneManager.LoadScene("PracticeMode"));
+
+        var cancelRt = MakeRect("Cancel", dialogRt, new Vector2(0.54f, 0.12f), new Vector2(0.92f, 0.42f));
+        var cancelImg = AddImage(cancelRt, new Color(0.6f, 0.6f, 0.6f, 1f));
+        var cancelBtn = cancelRt.gameObject.AddComponent<Button>();
+        cancelBtn.targetGraphic = cancelImg;
+        var cancelLbl = AddTmpLabel(cancelRt, "취소", 22f, TextAlignmentOptions.Center);
+        cancelLbl.color = Color.white;
+        cancelBtn.onClick.AddListener(() => { if (draftHomeConfirmPopup != null) draftHomeConfirmPopup.SetActive(false); });
+
+        draftHomeConfirmPopup = overlayRt.gameObject;
+        overlayRt.SetAsLastSibling(); // 다른 UI 위에 그려지도록
+        draftHomeConfirmPopup.SetActive(false);
+    }
+
     // ── 패 확인 + 5번의 1:1 매치 단계 ─────────────────────────────────────
 
     // 14턴 드래프트가 끝나면 호출. 중앙 컬럼을 비우고 "패 확인" UI를 그린 뒤 30초 카운트다운.
@@ -736,13 +819,13 @@ public class DraftController : MonoBehaviour
 
         var timerRect = MakeRect("HandReviewTimer", centerColTransform, new Vector2(0f, 0.74f), new Vector2(1f, 0.84f));
         matchTimerLabel = AddTmpLabel(timerRect, $"남은 시간 : {Mathf.CeilToInt(HandReviewTimeLimit)}초", 26f, TextAlignmentOptions.Center);
-        matchTimerLabel.color = Color.black;
+        matchTimerLabel.color = Color.white;
 
         var infoRect = MakeRect("HandReviewInfo", centerColTransform, new Vector2(0.05f, 0.30f), new Vector2(0.95f, 0.70f));
         var infoLbl = AddTmpLabel(infoRect,
             $"라운드 {SeriesState.CurrentRound}/{SeriesState.TotalRounds}   시리즈 스코어 {SeriesState.PlayerScore} - {SeriesState.AiScore}\n\n30초 후 시합이 시작됩니다.\n좌/우의 내 패와 상대 패를 확인하세요.",
             24f, TextAlignmentOptions.Center);
-        infoLbl.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+        infoLbl.color = Color.white;
     }
 
     private IEnumerator HandReviewTimerRoutine()
@@ -762,7 +845,9 @@ public class DraftController : MonoBehaviour
         ShowMatchStartPopup();
     }
 
-    // "시합을 시작합니다" 팝업 — 확인 누르면 첫 매치 진입
+    // "시합을 시작합니다" 팝업 — 확인 버튼 없이 3초 후 자동으로 첫 매치 진입.
+    private const float MatchStartAutoCloseSeconds = 3f;
+
     private void ShowMatchStartPopup()
     {
         var canvas = GetComponentInParent<Canvas>();
@@ -788,17 +873,17 @@ public class DraftController : MonoBehaviour
         boxRt.anchoredPosition = Vector2.zero;
         box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
 
-        var titleRect = MakeRect("Title", boxRt, new Vector2(0f, 0.45f), new Vector2(1f, 0.95f));
+        var titleRect = MakeRect("Title", boxRt, Vector2.zero, Vector2.one);
         var title = AddTmpLabel(titleRect, "시합을 시작합니다", 40f, TextAlignmentOptions.Center);
         title.color = Color.white;
 
-        var btnRect = MakeRect("ConfirmButton", boxRt, new Vector2(0.30f, 0.10f), new Vector2(0.70f, 0.38f));
-        var btnImg = AddImage(btnRect, Color.white);
-        var btnLbl = AddTmpLabel(btnRect, "확인", 28f, TextAlignmentOptions.Center);
-        btnLbl.color = Color.black;
-        var startBtn = btnRect.gameObject.AddComponent<Button>();
-        startBtn.targetGraphic = btnImg;
-        startBtn.onClick.AddListener(OnMatchStartConfirmed);
+        StartCoroutine(AutoCloseMatchStartPopupRoutine());
+    }
+
+    private IEnumerator AutoCloseMatchStartPopupRoutine()
+    {
+        yield return new WaitForSeconds(MatchStartAutoCloseSeconds);
+        OnMatchStartConfirmed();
     }
 
     private void OnMatchStartConfirmed()
@@ -842,13 +927,13 @@ public class DraftController : MonoBehaviour
 
         var timerRect = MakeRect("MatchTimer", centerColTransform, new Vector2(0f, 0.84f), new Vector2(1f, 0.92f));
         matchTimerLabel = AddTmpLabel(timerRect, $"남은 시간 : {Mathf.CeilToInt(MatchPickTimeLimit)}초", 24f, TextAlignmentOptions.Center);
-        matchTimerLabel.color = Color.black;
+        matchTimerLabel.color = Color.white;
 
         var infoRect = MakeRect("MatchInfo", centerColTransform, new Vector2(0f, 0.76f), new Vector2(1f, 0.84f));
         var infoLbl = AddTmpLabel(infoRect,
             $"라운드 {SeriesState.CurrentRound}/{SeriesState.TotalRounds}   시리즈 스코어 {SeriesState.PlayerScore} - {SeriesState.AiScore}\n낼 카드 한 장을 고른 뒤 픽 버튼을 누르세요.",
             18f, TextAlignmentOptions.Center);
-        infoLbl.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+        infoLbl.color = Color.white;
 
         // 카드 영역 (내 패 7장을 3+4 피라미드로)
         var cardArea = MakeRect("Cards", centerColTransform, new Vector2(0.05f, 0.12f), new Vector2(0.95f, 0.78f));

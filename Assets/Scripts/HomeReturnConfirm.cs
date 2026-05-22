@@ -27,12 +27,19 @@ public class HomeReturnConfirm : MonoBehaviour
 
     public void OnHomeButtonClicked()
     {
-        if (confirmPopup != null)
-            confirmPopup.SetActive(true);
+        if (confirmPopup == null) return;
+        // 런타임에 같은 부모 안에서 다른 팝업이 뒤늦게 추가될 수 있어 z-order가 밀린다.
+        // 표시 직전에 마지막 자식으로 올려 항상 다른 UI 위에 그려지도록 강제.
+        confirmPopup.transform.SetAsLastSibling();
+        confirmPopup.SetActive(true);
+        // 팝업이 떠 있는 동안 게임을 일시정지 — 타이머/AI 진행 모두 정지.
+        Time.timeScale = 0f;
     }
 
     public void OnReturnClicked()
     {
+        // 다음 씬으로 넘어가기 전에 timeScale을 복구하지 않으면 새 씬도 멈춘 상태로 시작된다.
+        Time.timeScale = 1f;
         SceneManager.LoadScene(homeSceneName);
     }
 
@@ -40,5 +47,12 @@ public class HomeReturnConfirm : MonoBehaviour
     {
         if (confirmPopup != null)
             confirmPopup.SetActive(false);
+        Time.timeScale = 1f;
+    }
+
+    // 컴포넌트가 비활성/파괴될 때 timeScale이 0으로 묶여 있지 않도록 보호.
+    private void OnDisable()
+    {
+        if (Time.timeScale == 0f) Time.timeScale = 1f;
     }
 }

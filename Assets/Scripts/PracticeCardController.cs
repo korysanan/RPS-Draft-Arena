@@ -180,6 +180,7 @@ public class PracticeCardController : MonoBehaviour
     [SerializeField] private Sprite plus5ButtonSprite;           // Plus_5_Button (+5 버튼)
     [SerializeField] private Sprite minus5ButtonSprite;          // Minus_5_Button (-5 버튼)
     [SerializeField] private Sprite battingSelectButtonSprite;   // Batting_Select_Button (베팅 확정 버튼)
+    [SerializeField] private Sprite homeButtonSprite;            // Move_Home_Button (드래프트/매치 단계 상단 홈 버튼)
 
     // DraftController에서 참조하기 위한 public 접근자
     public Sprite DraftPlayBackgroundSprite => draftPlayBackgroundSprite;
@@ -188,6 +189,18 @@ public class PracticeCardController : MonoBehaviour
     public Sprite Plus5ButtonSprite => plus5ButtonSprite;
     public Sprite Minus5ButtonSprite => minus5ButtonSprite;
     public Sprite BattingSelectButtonSprite => battingSelectButtonSprite;
+    public Sprite HomeButtonSprite
+    {
+        get
+        {
+            if (homeButtonSprite != null) return homeButtonSprite;
+#if UNITY_EDITOR
+            // 인스펙터 미와이어 시 에디터에서 자동 로드. 빌드본은 와이어가 있어야 함.
+            homeButtonSprite = LoadSpriteAtPath("Assets/Image/Move_Home_Button.png");
+#endif
+            return homeButtonSprite;
+        }
+    }
 
     // 씬 상단 Canvas 아래 두 그룹. 선/후픽 결정 단계와 드래프트 단계를 분리하여
     // 활성/비활성으로 화면 전환을 수행한다. 인스펙터에서 미리 만들어두면 그것을 사용,
@@ -204,6 +217,16 @@ public class PracticeCardController : MonoBehaviour
     [SerializeField] private float aiChooseDelay = 1.5f;
     // 드래프트 이동 팝업이 화면에 떠 있는 시간(초)
     [SerializeField] private float draftTransitionAutoCloseSeconds = 5f;
+    // 결과 팝업이 자동으로 다음 단계로 넘어가는 데 걸리는 시간(초). 확인 버튼 대신 사용.
+    [SerializeField] private float resultPopupAutoAdvanceSeconds = 3f;
+    // 선/후픽 선택 팝업의 제한 시간(초). 만료 시 무작위 선택.
+    [SerializeField] private float pickChoiceTimeLimit = 10f;
+    // 선/후픽 팝업에 카운트다운을 표시할 TMP 라벨. 비어 있으면 EnsurePopups에서 자동 생성.
+    [SerializeField] private TMP_Text pickChoiceCountdownLabel;
+
+    // 코루틴 핸들 — 시점 전환 시 안전하게 중단하기 위함
+    private Coroutine resultAutoAdvanceCoroutine;
+    private Coroutine pickChoiceTimerCoroutine;
 
     // 양 쪽 픽 추적
     private CardFlip userPick;
@@ -354,7 +377,20 @@ public class PracticeCardController : MonoBehaviour
             resultLabel.text =
                 $"[{firstPicker}]\n나: {userPick.Element}\nAI: {aiPick.Element}\n결과: {OutcomeKor(outcome)}";
         }
+        // 확인 버튼은 더 이상 사용하지 않음 — 결과 팝업은 일정 시간 뒤 자동으로 다음 단계로 진입.
+        if (confirmButton != null) confirmButton.gameObject.SetActive(false);
         resultPopup.SetActive(true);
+
+        if (resultAutoAdvanceCoroutine != null) StopCoroutine(resultAutoAdvanceCoroutine);
+        resultAutoAdvanceCoroutine = StartCoroutine(AutoAdvanceResultRoutine());
+    }
+
+    // 결과 팝업을 일정 시간 뒤 자동으로 닫고 OnResultConfirmed로 진행.
+    private IEnumerator AutoAdvanceResultRoutine()
+    {
+        yield return new WaitForSeconds(resultPopupAutoAdvanceSeconds);
+        resultAutoAdvanceCoroutine = null;
+        OnResultConfirmed();
     }
 
     // 결과 팝업 확인 버튼.
@@ -415,10 +451,33 @@ public class PracticeCardController : MonoBehaviour
         }
     }
 
-    // 선/후픽 선택 팝업 표시 (유저가 직접 선택)
+    // 선/후픽 선택 팝업 표시 (유저가 직접 선택). 10초 카운트다운을 함께 시작.
     private void ShowPickChoiceFlow()
     {
         if (pickChoicePopup != null) pickChoicePopup.SetActive(true);
+
+        if (pickChoiceTimerCoroutine != null) StopCoroutine(pickChoiceTimerCoroutine);
+        pickChoiceTimerCoroutine = StartCoroutine(PickChoiceTimerRoutine());
+    }
+
+    // 10초 카운트다운 — 매 프레임 라벨 갱신, 만료 시 무작위로 선/후픽 자동 선택.
+    private IEnumerator PickChoiceTimerRoutine()
+    {
+        float remaining = pickChoiceTimeLimit;
+        while (remaining > 0f)
+        {
+            if (pickChoiceCountdownLabel != null)
+            {
+                int secs = Mathf.CeilToInt(Mathf.Max(0f, remaining));
+                pickChoiceCountdownLabel.text = $"남은 시간 : {secs}초";
+            }
+            yield return null;
+            remaining -= Time.deltaTime;
+        }
+        if (pickChoiceCountdownLabel != null) pickChoiceCountdownLabel.text = "남은 시간 : 0초";
+        pickChoiceTimerCoroutine = null;
+        // 시간 초과 → 50/50로 선/후픽을 자동 결정
+        OnUserChosePickOrder(Random.value < 0.5f);
     }
 
     // AI가 선/후픽을 고르는 척하는 연출 팝업 + 코루틴
@@ -490,6 +549,10 @@ public class PracticeCardController : MonoBehaviour
         if (aiChoosingPopup != null) aiChoosingPopup.SetActive(false);
         if (draftTransitionPopup != null) draftTransitionPopup.SetActive(false);
 
+        // 이전 라운드에서 남아 있던 타이머/자동진행 코루틴 정리
+        if (resultAutoAdvanceCoroutine != null) { StopCoroutine(resultAutoAdvanceCoroutine); resultAutoAdvanceCoroutine = null; }
+        if (pickChoiceTimerCoroutine != null) { StopCoroutine(pickChoiceTimerCoroutine); pickChoiceTimerCoroutine = null; }
+
         // 카드/픽 상태 초기화 + 다음 라운드를 위해 카드 재배치(셔플)
         ResetCardFlipState();
         ReshuffleCards();
@@ -537,9 +600,15 @@ public class PracticeCardController : MonoBehaviour
         }
     }
 
-    // 유저가 승리 후 선/후픽을 직접 선택했을 때 호출 (firstPickButton / secondPickButton에서 연결)
+    // 유저가 승리 후 선/후픽을 직접 선택했을 때 호출 (firstPickButton / secondPickButton에서 연결).
+    // 카운트다운 코루틴이 돌고 있다면 함께 중단 — 타임아웃 자동 선택과 충돌 방지.
     private void OnUserChosePickOrder(bool userTakesFirstPick)
     {
+        if (pickChoiceTimerCoroutine != null)
+        {
+            StopCoroutine(pickChoiceTimerCoroutine);
+            pickChoiceTimerCoroutine = null;
+        }
         if (pickChoicePopup != null) pickChoicePopup.SetActive(false);
         ShowDraftTransitionPopup(userTakesFirstPick);
     }
@@ -673,6 +742,18 @@ public class PracticeCardController : MonoBehaviour
                 secondPickButton = CreateUiButton(pickChoicePopup.transform, "후픽", new Vector2(114.8993f, -115.05f), font, secondPickButtonSprite);
                 ((RectTransform)secondPickButton.transform).sizeDelta = new Vector2(368.9825f, 218.06f);
             }
+        }
+
+        // 카운트다운 라벨이 인스펙터에 와이어되지 않았다면 팝업 상단에 자동 생성.
+        // 배경 이미지가 있어도 이 텍스트는 항상 표시 — 남은 시간을 안 보여주면 사용자가 갑작스러운 자동선택에 당황한다.
+        if (pickChoiceCountdownLabel == null && pickChoicePopup != null)
+        {
+            pickChoiceCountdownLabel = CreateTmpLabel(pickChoicePopup.transform, $"남은 시간 : {Mathf.CeilToInt(pickChoiceTimeLimit)}초", font, 36f);
+            var rt = pickChoiceCountdownLabel.rectTransform;
+            rt.anchorMin = new Vector2(0f, 0.85f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.offsetMin = new Vector2(16f, 4f);
+            rt.offsetMax = new Vector2(-16f, -4f);
         }
 
         if (aiChoosingPopup == null)

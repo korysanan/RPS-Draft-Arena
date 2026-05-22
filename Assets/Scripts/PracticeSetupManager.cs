@@ -45,6 +45,7 @@ public class PracticeSetupManager : MonoBehaviour
     [SerializeField] private TMP_Text confirmResultLabel;      // 팝업 안에서 선택 내용을 보여주는 텍스트
     [SerializeField] private GameObject popupPanel;            // 게임 시작/취소 팝업
     [SerializeField] private string practiceSceneName = "Practice"; // 게임 시작 시 로드할 씬 이름
+    [SerializeField] private GameObject quitConfirmPanel;      // Exit 버튼 → 종료 확인 팝업
 
     // 현재 선택된 값 (없으면 None)
     private AIDifficulty selectedDifficulty = AIDifficulty.None;
@@ -170,6 +171,30 @@ public class PracticeSetupManager : MonoBehaviour
     {
         if (popupPanel != null)
             popupPanel.SetActive(false);
+    }
+
+    // Exit 버튼: 종료 확인 팝업 표시
+    public void OnQuitClicked()
+    {
+        if (quitConfirmPanel != null)
+            quitConfirmPanel.SetActive(true);
+    }
+
+    // 확인 팝업의 "닫기" 버튼: 팝업만 닫음
+    public void CancelQuit()
+    {
+        if (quitConfirmPanel != null)
+            quitConfirmPanel.SetActive(false);
+    }
+
+    // 확인 팝업의 "종료" 버튼: 애플리케이션 종료
+    public void ConfirmQuit()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 
     // enum → 표시 문자열 변환 헬퍼들 (팝업에 보여줄 한글 라벨)

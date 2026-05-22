@@ -300,7 +300,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: abeaf5ca3f7701447976a20b818d441d, type: 3}
   m_Name:
   m_EditorClassIdentifier:
-  nextSceneName: Main_Home
+  nextSceneName: PracticeMode
   bgmClip: {fileID: 8300000, guid: 8f91db30c63ce40f59e1897abb6fc3dc, type: 3}
   enterButtonClip: {fileID: 8300000, guid: ad028bf66e41e41cfa90a1acf573f091, type: 3}
   bgmVolume: 0.6

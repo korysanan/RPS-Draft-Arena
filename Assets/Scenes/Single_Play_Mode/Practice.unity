@@ -1405,6 +1405,7 @@ MonoBehaviour:
   plus5ButtonSprite: {fileID: 9062788436568362780, guid: 76cef5835c4247848a2729c8caede0ae, type: 3}
   minus5ButtonSprite: {fileID: -7334218718252379959, guid: b8ebd51b27cadb440bac4fe430ee45dc, type: 3}
   battingSelectButtonSprite: {fileID: -3324833276754196223, guid: e88b3a19cae73104587fdb79467f0763, type: 3}
+  homeButtonSprite: {fileID: -7306881806811910613, guid: b50acf76f3208f840ba73f824ed7f2fa, type: 3}
   decidingGroup: {fileID: 0}
   draftGroup: {fileID: 0}
   aiPickDelayMin: 0.4
@@ -4557,7 +4558,7 @@ MonoBehaviour:
   confirmPopup: {fileID: 16000001}
   returnButton: {fileID: 16000044}
   cancelButton: {fileID: 16000064}
-  homeSceneName: Main_Home
+  homeSceneName: PracticeMode
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
