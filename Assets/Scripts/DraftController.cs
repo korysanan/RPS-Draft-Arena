@@ -855,14 +855,20 @@ public class DraftController : MonoBehaviour
         AddImage(overlayRt, new Color(0f, 0f, 0f, 0.6f));
 
         var dialogRt = MakeRect("Dialog", overlayRt, new Vector2(0.3f, 0.36f), new Vector2(0.7f, 0.64f));
-        AddImage(dialogRt, new Color(0.95f, 0.95f, 0.95f, 1f));
+        var dialogImg = AddImage(dialogRt, Color.white);
+        var bgSprite = practiceController != null ? practiceController.HomeConfirmBgSprite : null;
+        if (bgSprite != null) { dialogImg.sprite = bgSprite; dialogImg.preserveAspect = true; }
+        else { dialogImg.color = new Color(0.95f, 0.95f, 0.95f, 1f); }
 
         var msgRt = MakeRect("Message", dialogRt, new Vector2(0f, 0.5f), new Vector2(1f, 1f));
         var msgLbl = AddTmpLabel(msgRt, "홈으로 돌아가시겠습니까?\n(진행 중인 라운드는 사라집니다)", 26f, TextAlignmentOptions.Center);
         msgLbl.color = Color.black;
 
         var returnRt = MakeRect("Return", dialogRt, new Vector2(0.08f, 0.12f), new Vector2(0.46f, 0.42f));
-        var returnImg = AddImage(returnRt, new Color(0.85f, 0.25f, 0.25f, 1f));
+        var returnImg = AddImage(returnRt, Color.white);
+        var returnSprite = practiceController != null ? practiceController.HomeConfirmReturnSprite : null;
+        if (returnSprite != null) { returnImg.sprite = returnSprite; returnImg.preserveAspect = true; }
+        else { returnImg.color = new Color(0.85f, 0.25f, 0.25f, 1f); }
         var returnBtn = returnRt.gameObject.AddComponent<Button>();
         returnBtn.targetGraphic = returnImg;
         var returnLbl = AddTmpLabel(returnRt, "돌아가기", 22f, TextAlignmentOptions.Center);
@@ -870,7 +876,10 @@ public class DraftController : MonoBehaviour
         returnBtn.onClick.AddListener(() => UnityEngine.SceneManagement.SceneManager.LoadScene("PracticeMode"));
 
         var cancelRt = MakeRect("Cancel", dialogRt, new Vector2(0.54f, 0.12f), new Vector2(0.92f, 0.42f));
-        var cancelImg = AddImage(cancelRt, new Color(0.6f, 0.6f, 0.6f, 1f));
+        var cancelImg = AddImage(cancelRt, Color.white);
+        var cancelSprite = practiceController != null ? practiceController.HomeConfirmCancelSprite : null;
+        if (cancelSprite != null) { cancelImg.sprite = cancelSprite; cancelImg.preserveAspect = true; }
+        else { cancelImg.color = new Color(0.6f, 0.6f, 0.6f, 1f); }
         var cancelBtn = cancelRt.gameObject.AddComponent<Button>();
         cancelBtn.targetGraphic = cancelImg;
         var cancelLbl = AddTmpLabel(cancelRt, "취소", 22f, TextAlignmentOptions.Center);

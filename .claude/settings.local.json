@@ -6,7 +6,10 @@
       "Bash(python build_practice_play_scene.py)",
       "Bash(python inject_card_flip.py)",
       "Bash(python inject_practice_popup.py)",
-      "PowerShell(dotnet build *)"
+      "PowerShell(dotnet build *)",
+      "Bash(grep -ivE \"Background|Option|Toggle|Border|Underline|Indicator|^[0-9]+:  m_Name: $\")",
+      "Bash(grep *)",
+      "Bash(xxd)"
     ]
   }
 }

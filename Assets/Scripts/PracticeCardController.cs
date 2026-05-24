@@ -181,6 +181,9 @@ public class PracticeCardController : MonoBehaviour
     [SerializeField] private Sprite minus5ButtonSprite;          // Minus_5_Button (-5 버튼)
     [SerializeField] private Sprite battingSelectButtonSprite;   // Batting_Select_Button (베팅 확정 버튼)
     [SerializeField] private Sprite homeButtonSprite;            // Move_Home_Button (드래프트/매치 단계 상단 홈 버튼)
+    [SerializeField] private Sprite homeConfirmBgSprite;         // popup_bg (홈 확인 팝업 배경)
+    [SerializeField] private Sprite homeConfirmReturnSprite;     // Return_Btn (홈 확인 팝업 돌아가기)
+    [SerializeField] private Sprite homeConfirmCancelSprite;     // Cancel_Btn (홈 확인 팝업 취소)
 
     // DraftController에서 참조하기 위한 public 접근자
     public Sprite DraftPlayBackgroundSprite => draftPlayBackgroundSprite;
@@ -199,6 +202,39 @@ public class PracticeCardController : MonoBehaviour
             homeButtonSprite = LoadSpriteAtPath("Assets/Image/Move_Home_Button.png");
 #endif
             return homeButtonSprite;
+        }
+    }
+    public Sprite HomeConfirmBgSprite
+    {
+        get
+        {
+            if (homeConfirmBgSprite != null) return homeConfirmBgSprite;
+#if UNITY_EDITOR
+            homeConfirmBgSprite = LoadSpriteAtPath("Assets/Image/Play/HomeButton/popup_bg.png");
+#endif
+            return homeConfirmBgSprite;
+        }
+    }
+    public Sprite HomeConfirmReturnSprite
+    {
+        get
+        {
+            if (homeConfirmReturnSprite != null) return homeConfirmReturnSprite;
+#if UNITY_EDITOR
+            homeConfirmReturnSprite = LoadSpriteAtPath("Assets/Image/Play/HomeButton/Return_Btn.png");
+#endif
+            return homeConfirmReturnSprite;
+        }
+    }
+    public Sprite HomeConfirmCancelSprite
+    {
+        get
+        {
+            if (homeConfirmCancelSprite != null) return homeConfirmCancelSprite;
+#if UNITY_EDITOR
+            homeConfirmCancelSprite = LoadSpriteAtPath("Assets/Image/Play/HomeButton/Cancel_Btn.png");
+#endif
+            return homeConfirmCancelSprite;
         }
     }
 
