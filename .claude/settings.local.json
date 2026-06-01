@@ -9,7 +9,14 @@
       "PowerShell(dotnet build *)",
       "Bash(grep -ivE \"Background|Option|Toggle|Border|Underline|Indicator|^[0-9]+:  m_Name: $\")",
       "Bash(grep *)",
-      "Bash(xxd)"
+      "Bash(xxd)",
+      "Bash(awk 'NR>=3905 && NR<=3925 {print NR\": \"$0}' Practice.unity)",
+      "Bash(awk 'NR>=4178 && NR<=4210 {print NR\": \"$0}' Practice.unity)",
+      "Bash(awk 'NR>=4433 && NR<=4465 {print NR\": \"$0}' Practice.unity)",
+      "Bash(awk 'NR>=3923 && NR<=3950 {print NR\": \"$0}' Practice.unity)",
+      "Bash(awk 'NR>=3905 && NR<=3960' '/c/Users/ujin0561/Desktop/git_clone/RPS Draft Arena/Assets/Scenes/Single_Play_Mode/Practice.unity')",
+      "Bash(awk 'NR>=4160 && NR<=4260' '/c/Users/ujin0561/Desktop/git_clone/RPS Draft Arena/Assets/Scenes/Single_Play_Mode/Practice.unity')",
+      "Bash([ -f \"$f\" ])"
     ]
   }
 }

@@ -854,36 +854,47 @@ public class DraftController : MonoBehaviour
         var overlayRt = MakeRect("HomeConfirmPopup", rootRt, Vector2.zero, Vector2.one);
         AddImage(overlayRt, new Color(0f, 0f, 0f, 0.6f));
 
-        var dialogRt = MakeRect("Dialog", overlayRt, new Vector2(0.3f, 0.36f), new Vector2(0.7f, 0.64f));
+        // 픽 단계의 HomeReturnPopup과 동일한 "고정 픽셀" 레이아웃으로 맞춘다.
+        // (이전엔 비율 앵커 + preserveAspect라 화면 비율/해상도에 따라 크기가 깨졌다.
+        //  HomeReturnPopup은 RawImage가 고정 rect를 꽉 채우는 방식이라 preserveAspect=false로 동일하게 채운다.)
+        var dialogRt = MakeRect("Dialog", overlayRt, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        dialogRt.sizeDelta = new Vector2(800f, 400f);
+        dialogRt.anchoredPosition = Vector2.zero;
         var dialogImg = AddImage(dialogRt, Color.white);
         var bgSprite = practiceController != null ? practiceController.HomeConfirmBgSprite : null;
-        if (bgSprite != null) { dialogImg.sprite = bgSprite; dialogImg.preserveAspect = true; }
+        if (bgSprite != null) { dialogImg.sprite = bgSprite; dialogImg.preserveAspect = false; }
         else { dialogImg.color = new Color(0.95f, 0.95f, 0.95f, 1f); }
 
-        var msgRt = MakeRect("Message", dialogRt, new Vector2(0f, 0.5f), new Vector2(1f, 1f));
-        var msgLbl = AddTmpLabel(msgRt, "홈으로 돌아가시겠습니까?\n(진행 중인 라운드는 사라집니다)", 26f, TextAlignmentOptions.Center);
-        msgLbl.color = Color.black;
+        var msgRt = MakeRect("Message", dialogRt, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
+        msgRt.sizeDelta = new Vector2(720f, 160f);
+        msgRt.anchoredPosition = new Vector2(0f, -120f);
+        var msgLbl = AddTmpLabel(msgRt, "홈으로 돌아가시겠습니까?\n(진행 중인 라운드는 사라집니다)", 48f, TextAlignmentOptions.Center);
+        msgLbl.color = new Color(0.1f, 0.1f, 0.1f, 1f);
 
-        var returnRt = MakeRect("Return", dialogRt, new Vector2(0.08f, 0.12f), new Vector2(0.46f, 0.42f));
+        var returnRt = MakeRect("Return", dialogRt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+        returnRt.sizeDelta = new Vector2(280f, 100f);
+        returnRt.anchoredPosition = new Vector2(-180f, 90f);
         var returnImg = AddImage(returnRt, Color.white);
         var returnSprite = practiceController != null ? practiceController.HomeConfirmReturnSprite : null;
-        if (returnSprite != null) { returnImg.sprite = returnSprite; returnImg.preserveAspect = true; }
+        if (returnSprite != null) { returnImg.sprite = returnSprite; returnImg.preserveAspect = false; }
         else { returnImg.color = new Color(0.85f, 0.25f, 0.25f, 1f); }
         var returnBtn = returnRt.gameObject.AddComponent<Button>();
         returnBtn.targetGraphic = returnImg;
-        var returnLbl = AddTmpLabel(returnRt, "돌아가기", 22f, TextAlignmentOptions.Center);
-        returnLbl.color = Color.white;
+        var returnLbl = AddTmpLabel(returnRt, "돌아가기", 40f, TextAlignmentOptions.Center);
+        returnLbl.color = new Color(0.1f, 0.1f, 0.1f, 1f);
         returnBtn.onClick.AddListener(() => UnityEngine.SceneManagement.SceneManager.LoadScene("PracticeMode"));
 
-        var cancelRt = MakeRect("Cancel", dialogRt, new Vector2(0.54f, 0.12f), new Vector2(0.92f, 0.42f));
+        var cancelRt = MakeRect("Cancel", dialogRt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
+        cancelRt.sizeDelta = new Vector2(280f, 100f);
+        cancelRt.anchoredPosition = new Vector2(180f, 90f);
         var cancelImg = AddImage(cancelRt, Color.white);
         var cancelSprite = practiceController != null ? practiceController.HomeConfirmCancelSprite : null;
-        if (cancelSprite != null) { cancelImg.sprite = cancelSprite; cancelImg.preserveAspect = true; }
+        if (cancelSprite != null) { cancelImg.sprite = cancelSprite; cancelImg.preserveAspect = false; }
         else { cancelImg.color = new Color(0.6f, 0.6f, 0.6f, 1f); }
         var cancelBtn = cancelRt.gameObject.AddComponent<Button>();
         cancelBtn.targetGraphic = cancelImg;
-        var cancelLbl = AddTmpLabel(cancelRt, "취소", 22f, TextAlignmentOptions.Center);
-        cancelLbl.color = Color.white;
+        var cancelLbl = AddTmpLabel(cancelRt, "취소", 40f, TextAlignmentOptions.Center);
+        cancelLbl.color = new Color(0.1f, 0.1f, 0.1f, 1f);
         cancelBtn.onClick.AddListener(() => { if (draftHomeConfirmPopup != null) draftHomeConfirmPopup.SetActive(false); });
 
         draftHomeConfirmPopup = overlayRt.gameObject;
@@ -971,6 +982,7 @@ public class DraftController : MonoBehaviour
         var canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
 
+        // 풀스크린 컨테이너 — 딤/박스/문구 없이 투명하게 두고, 자동 닫힘 동안 입력만 가로막는다.
         matchStartPopup = new GameObject("MatchStartPopup", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         matchStartPopup.transform.SetParent(canvas.transform, false);
         var overlayRt = (RectTransform)matchStartPopup.transform;
@@ -978,22 +990,33 @@ public class DraftController : MonoBehaviour
         overlayRt.anchorMax = Vector2.one;
         overlayRt.offsetMin = Vector2.zero;
         overlayRt.offsetMax = Vector2.zero;
-        matchStartPopup.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.78f);
+        matchStartPopup.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0f); // 투명 (보이는 배경 없음, 클릭만 차단)
         matchStartPopup.transform.SetAsLastSibling();
 
-        var box = new GameObject("Box", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        box.transform.SetParent(matchStartPopup.transform, false);
-        var boxRt = (RectTransform)box.transform;
-        boxRt.anchorMin = new Vector2(0.5f, 0.5f);
-        boxRt.anchorMax = new Vector2(0.5f, 0.5f);
-        boxRt.pivot = new Vector2(0.5f, 0.5f);
-        boxRt.sizeDelta = new Vector2(700f, 360f);
-        boxRt.anchoredPosition = Vector2.zero;
-        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
-
-        var titleRect = MakeRect("Title", boxRt, Vector2.zero, Vector2.one);
-        var title = AddTmpLabel(titleRect, "시합을 시작합니다", 40f, TextAlignmentOptions.Center);
-        title.color = Color.white;
+        // 팝업 박스/텍스트 없이 Match_Start_Popup 이미지만 중앙에 표시.
+        var imageGo = new GameObject("MatchStartImage", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        imageGo.transform.SetParent(matchStartPopup.transform, false);
+        var imgRt = (RectTransform)imageGo.transform;
+        imgRt.anchorMin = new Vector2(0.5f, 0.5f);
+        imgRt.anchorMax = new Vector2(0.5f, 0.5f);
+        imgRt.pivot = new Vector2(0.5f, 0.5f);
+        imgRt.sizeDelta = new Vector2(1000f, 513f); // Match_Start_Popup.png 비율(약 1.95:1) 유지
+        imgRt.anchoredPosition = Vector2.zero;
+        var splashImg = imageGo.GetComponent<Image>();
+        var splashSprite = practiceController != null ? practiceController.MatchStartPopupSprite : null;
+        if (splashSprite != null)
+        {
+            splashImg.sprite = splashSprite;
+            splashImg.preserveAspect = true;
+            splashImg.color = Color.white;
+        }
+        else
+        {
+            // 스프라이트 미지정 시에만 기존 텍스트 폴백
+            splashImg.color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
+            var title = AddTmpLabel(imgRt, "시합을 시작합니다", 40f, TextAlignmentOptions.Center);
+            title.color = Color.white;
+        }
 
         StartCoroutine(AutoCloseMatchStartPopupRoutine());
     }
@@ -1102,11 +1125,11 @@ public class DraftController : MonoBehaviour
             }
         }
 
-        // 픽 버튼 (드래프트 단계의 "결정" 버튼과 동일 위치)
+        // 픽 버튼 (드래프트 단계의 "결정" 버튼과 동일 위치). pick_button 이미지만 표시(라벨 없음).
         var pickRect = MakeRect("MatchPickButton", centerColTransform, new Vector2(0.35f, 0.02f), new Vector2(0.65f, 0.10f));
         var pickImg = AddImage(pickRect, Color.white);
-        var pickLbl = AddTmpLabel(pickRect, "픽", 28f, TextAlignmentOptions.Center);
-        pickLbl.color = Color.black;
+        var pickSprite = practiceController != null ? practiceController.PickButtonSprite : null;
+        if (pickSprite != null) { pickImg.sprite = pickSprite; pickImg.preserveAspect = true; }
         matchPickButton = pickRect.gameObject.AddComponent<Button>();
         matchPickButton.targetGraphic = pickImg;
         var colors = matchPickButton.colors;
@@ -1960,12 +1983,25 @@ public class DraftController : MonoBehaviour
                 typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             flash.transform.SetParent(duelFlipOverlay.transform, false);
             var fRt = (RectTransform)flash.transform;
-            fRt.anchorMin = new Vector2(0.42f, 0.40f);
-            fRt.anchorMax = new Vector2(0.58f, 0.66f);
+            var fImg = flash.GetComponent<Image>();
+            // 무승부 충돌 이미지: draw_clash 스프라이트가 있으면 그것을 가운데에 표시, 없으면 기존 흰색 플래시.
+            var drawSprite = practiceController != null ? practiceController.DrawClashSprite : null;
+            if (drawSprite != null)
+            {
+                fRt.anchorMin = new Vector2(0.38f, 0.34f);
+                fRt.anchorMax = new Vector2(0.62f, 0.66f);
+                fImg.sprite = drawSprite;
+                fImg.preserveAspect = true;
+                fImg.color = Color.white;
+            }
+            else
+            {
+                fRt.anchorMin = new Vector2(0.42f, 0.40f);
+                fRt.anchorMax = new Vector2(0.58f, 0.66f);
+                fImg.color = new Color(1f, 1f, 1f, 0.9f);
+            }
             fRt.offsetMin = Vector2.zero;
             fRt.offsetMax = Vector2.zero;
-            var fImg = flash.GetComponent<Image>();
-            fImg.color = new Color(1f, 1f, 1f, 0.9f);
             fImg.raycastTarget = false;
             flash.transform.SetAsLastSibling();
         }
@@ -2137,43 +2173,57 @@ public class DraftController : MonoBehaviour
         matchResultPopup.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.78f);
         matchResultPopup.transform.SetAsLastSibling();
 
-        var box = new GameObject("Box", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        box.transform.SetParent(matchResultPopup.transform, false);
-        var boxRt = (RectTransform)box.transform;
-        boxRt.anchorMin = new Vector2(0.5f, 0.5f);
-        boxRt.anchorMax = new Vector2(0.5f, 0.5f);
-        boxRt.pivot = new Vector2(0.5f, 0.5f);
-        boxRt.sizeDelta = new Vector2(760f, 480f);
-        boxRt.anchoredPosition = Vector2.zero;
-        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
+        // 매치 결과(승/패/무)를 텍스트/확인 버튼 없이 이미지로만 표시. 확인 버튼 대신 5초 후 자동으로 다음 매치.
+        if (practiceController == null)
+            practiceController = FindObjectOfType<PracticeCardController>(true);
+        Sprite resultSprite = null;
+        if (practiceController != null)
+        {
+            if (outcome == MatchOutcome.Win) resultSprite = practiceController.PickVictorySprite;
+            else if (outcome == MatchOutcome.Lose) resultSprite = practiceController.PickDefeatSprite;
+            else resultSprite = practiceController.DrawSprite;
+        }
 
-        var titleRect = MakeRect("Title", boxRt, new Vector2(0f, 0.80f), new Vector2(1f, 0.96f));
-        var title = AddTmpLabel(titleRect, $"매치 {currentMatchIndex + 1} 결과", 30f, TextAlignmentOptions.Center);
-        title.color = new Color(1f, 0.85f, 0.4f, 1f);
+        var imgGo = new GameObject("MatchResultImage", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        imgGo.transform.SetParent(matchResultPopup.transform, false);
+        var imgRt = (RectTransform)imgGo.transform;
+        imgRt.anchorMin = new Vector2(0.5f, 0.5f);
+        imgRt.anchorMax = new Vector2(0.5f, 0.5f);
+        imgRt.pivot = new Vector2(0.5f, 0.5f);
+        imgRt.sizeDelta = new Vector2(760f, 620f);
+        imgRt.anchoredPosition = Vector2.zero;
+        var rImg = imgGo.GetComponent<Image>();
+        if (resultSprite != null)
+        {
+            rImg.sprite = resultSprite;
+            rImg.preserveAspect = true;
+            rImg.color = Color.white;
+        }
+        else
+        {
+            // 스프라이트 미할당 시에만 간단한 텍스트 폴백
+            rImg.color = new Color(0f, 0f, 0f, 0f);
+            var lbl = AddTmpLabel(imgRt, OutcomeKor(outcome), 48f, TextAlignmentOptions.Center);
+            lbl.color = Color.white;
+        }
 
-        int playerDelta = outcome == MatchOutcome.Win ? +playerBet : outcome == MatchOutcome.Lose ? -playerBet : 0;
-        int aiDelta = outcome == MatchOutcome.Win ? -aiBet : outcome == MatchOutcome.Lose ? +aiBet : 0;
-        string body =
-            $"나: {playerElem}  (베팅 {playerBet}pt)\n" +
-            $"AI: {aiElem}  (베팅 {aiBet}pt)\n\n" +
-            $"→ {OutcomeKor(outcome)}\n" +
-            $"포인트: 나 {FormatSigned(playerDelta)}pt,  AI {FormatSigned(aiDelta)}pt";
+        if (matchResultAutoAdvanceCoroutine != null) StopCoroutine(matchResultAutoAdvanceCoroutine);
+        matchResultAutoAdvanceCoroutine = StartCoroutine(AutoAdvanceMatchResultRoutine());
+    }
 
-        var contentRect = MakeRect("Content", boxRt, new Vector2(0f, 0.28f), new Vector2(1f, 0.80f));
-        var content = AddTmpLabel(contentRect, body, 24f, TextAlignmentOptions.Center);
-        content.color = Color.white;
-
-        var btnRect = MakeRect("ConfirmButton", boxRt, new Vector2(0.35f, 0.06f), new Vector2(0.65f, 0.24f));
-        var btnImg = AddImage(btnRect, Color.white);
-        var btnLbl = AddTmpLabel(btnRect, "확인", 26f, TextAlignmentOptions.Center);
-        btnLbl.color = Color.black;
-        var btn = btnRect.gameObject.AddComponent<Button>();
-        btn.targetGraphic = btnImg;
-        btn.onClick.AddListener(OnMatchResultConfirmed);
+    // 매치 결과 이미지를 5초간 보여준 뒤 자동으로 다음 매치로 진행 (확인 버튼 대체).
+    private const float MatchResultAutoAdvanceSeconds = 3f;
+    private Coroutine matchResultAutoAdvanceCoroutine;
+    private IEnumerator AutoAdvanceMatchResultRoutine()
+    {
+        yield return new WaitForSeconds(MatchResultAutoAdvanceSeconds);
+        matchResultAutoAdvanceCoroutine = null;
+        OnMatchResultConfirmed();
     }
 
     private void OnMatchResultConfirmed()
     {
+        if (matchResultAutoAdvanceCoroutine != null) { StopCoroutine(matchResultAutoAdvanceCoroutine); matchResultAutoAdvanceCoroutine = null; }
         if (matchResultPopup != null) { Destroy(matchResultPopup); matchResultPopup = null; }
         int next = currentMatchIndex + 1;
         if (next >= TotalMatches) FinalizeMatches();
@@ -2251,10 +2301,10 @@ public class DraftController : MonoBehaviour
                 28f, TextAlignmentOptions.Center);
             endLbl.color = new Color(1f, 0.85f, 0.4f, 1f);
 
-            // 홈으로 / 재시작 두 버튼 (좌/우)
+            // 설정 이동 / 재시작 두 버튼 (좌/우)
             var homeRect = MakeRect("HomeButton", bottomRect, new Vector2(0.10f, 0.05f), new Vector2(0.46f, 0.50f));
             var homeImg = AddImage(homeRect, Color.white);
-            var homeLbl = AddTmpLabel(homeRect, "홈으로", 24f, TextAlignmentOptions.Center);
+            var homeLbl = AddTmpLabel(homeRect, "설정 이동", 24f, TextAlignmentOptions.Center);
             homeLbl.color = Color.black;
             var homeBtn = homeRect.gameObject.AddComponent<Button>();
             homeBtn.targetGraphic = homeImg;
@@ -2295,10 +2345,10 @@ public class DraftController : MonoBehaviour
         }
     }
 
-    // 시리즈 종료 후 메인 홈 씬으로 이동 (다른 홈 버튼들과 일관)
+    // 시리즈 종료 후 설정(PracticeMode) 씬으로 이동
     private void OnSeriesEndHomeClicked()
     {
-        UnityEngine.SceneManagement.SceneManager.LoadScene("Main_Home");
+        UnityEngine.SceneManagement.SceneManager.LoadScene("PracticeMode");
     }
 
     // 시리즈 종료 후 현재 PracticeSettings 그대로 Practice 씬 재로드 (= 같은 설정으로 다시 시작)
@@ -2372,7 +2422,7 @@ public class DraftController : MonoBehaviour
         return sb.ToString();
     }
 
-    // 좌/우 슬롯 패널 위에 "사용됨" 오버레이(어두운 박스 + 체크) 추가. raw 이미지 자리는 텍스트 체크(✓)로 대체.
+    // 좌/우 슬롯 패널 위에 "사용됨" 오버레이(어두운 박스 + X 표시) 추가. raw 이미지 자리는 텍스트 X로 대체.
     private void AddUsedOverlayOnSlot(bool playerSide, int slotIdx)
     {
         var labels = playerSide ? playerSlotLabels : aiSlotLabels;
@@ -2388,17 +2438,17 @@ public class DraftController : MonoBehaviour
         rt.anchorMax = Vector2.one;
         rt.offsetMin = Vector2.zero;
         rt.offsetMax = Vector2.zero;
-        overlayGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+        overlayGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 200f / 255f);
         overlayGo.transform.SetAsLastSibling();
 
-        var checkLbl = AddTmpLabel((RectTransform)overlayGo.transform, "✓", 48f, TextAlignmentOptions.Center);
-        checkLbl.color = new Color(0.4f, 1f, 0.5f, 1f);
+        var checkLbl = AddTmpLabel((RectTransform)overlayGo.transform, "X", 48f, TextAlignmentOptions.Center);
+        checkLbl.color = new Color(0.9f, 0.2f, 0.2f, 1f);
         checkLbl.fontStyle = FontStyles.Bold;
 
         overlays.Add(overlayGo);
     }
 
-    // 매치 단계 중앙 카드 위에 "사용됨" 오버레이(어두운 박스 + 체크) — 다음 매치 빌드 시 이미 사용된 카드 시각화
+    // 매치 단계 중앙 카드 위에 "사용됨" 오버레이(어두운 박스 + X 표시) — 다음 매치 빌드 시 이미 사용된 카드 시각화
     private void AddUsedOverlayOnRect(RectTransform card)
     {
         var overlayGo = new GameObject("UsedOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
@@ -2408,10 +2458,10 @@ public class DraftController : MonoBehaviour
         rt.anchorMax = Vector2.one;
         rt.offsetMin = Vector2.zero;
         rt.offsetMax = Vector2.zero;
-        overlayGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+        overlayGo.GetComponent<Image>().color = new Color(0f, 0f, 0f, 200f / 255f);
         overlayGo.transform.SetAsLastSibling();
-        var checkLbl = AddTmpLabel((RectTransform)overlayGo.transform, "✓", 38f, TextAlignmentOptions.Center);
-        checkLbl.color = new Color(0.4f, 1f, 0.5f, 1f);
+        var checkLbl = AddTmpLabel((RectTransform)overlayGo.transform, "X", 38f, TextAlignmentOptions.Center);
+        checkLbl.color = new Color(0.9f, 0.2f, 0.2f, 1f);
         checkLbl.fontStyle = FontStyles.Bold;
     }
 

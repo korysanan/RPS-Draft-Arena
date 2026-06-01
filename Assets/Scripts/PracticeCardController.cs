@@ -173,6 +173,11 @@ public class PracticeCardController : MonoBehaviour
     [SerializeField] private Sprite aiChoosingPopupSprite;       // First_Second_Pick_Enemy (이미지만, 텍스트 미사용)
     [SerializeField] private Sprite pickCompleteNotifySprite;    // Pick_Complete_Notify (이미지 + 동적 텍스트 같이 표시)
 
+    // 선/후픽 결정(카드 뒤집기) 결과 및 라운드 종료 결과를 텍스트 대신 이미지로만 표시. 비어 있으면 에디터에서 자동 로드.
+    [SerializeField] private Sprite pickVictorySprite;           // Pick_Victory (승리 시)
+    [SerializeField] private Sprite pickDefeatSprite;            // Pick_Defeat (패배 시)
+    [SerializeField] private Sprite drawSprite;                  // Draw (무승부 시)
+
     // 드래프트(밴픽)/베팅 단계에 사용할 스프라이트. DraftController가 런타임에 부착되므로 여기서 보관하고 public 접근자로 노출.
     [SerializeField] private Sprite draftPlayBackgroundSprite;   // Draft_Play_Background
     [SerializeField] private Sprite selectButtonSprite;          // Select_Button (결정/픽 버튼)
@@ -184,10 +189,80 @@ public class PracticeCardController : MonoBehaviour
     [SerializeField] private Sprite homeConfirmBgSprite;         // popup_bg (홈 확인 팝업 배경)
     [SerializeField] private Sprite homeConfirmReturnSprite;     // Return_Btn (홈 확인 팝업 돌아가기)
     [SerializeField] private Sprite homeConfirmCancelSprite;     // Cancel_Btn (홈 확인 팝업 취소)
+    [SerializeField] private Sprite matchStartPopupSprite;       // Match_Start_Popup (드래프트 종료 후 "시합 시작" 스플래시)
+    [SerializeField] private Sprite pickButtonSprite;            // pick_button (매치 단계 픽 버튼 배경)
+    [SerializeField] private Sprite drawClashSprite;             // draw_clash (무승부 시 카드 충돌 임팩트 이미지)
 
     // DraftController에서 참조하기 위한 public 접근자
     public Sprite DraftPlayBackgroundSprite => draftPlayBackgroundSprite;
     public Sprite SelectButtonSprite => selectButtonSprite;
+    public Sprite MatchStartPopupSprite
+    {
+        get
+        {
+            if (matchStartPopupSprite != null) return matchStartPopupSprite;
+#if UNITY_EDITOR
+            matchStartPopupSprite = LoadSpriteAtPath("Assets/Image/Play/Match_Start_Popup.png");
+#endif
+            return matchStartPopupSprite;
+        }
+    }
+    public Sprite PickButtonSprite
+    {
+        get
+        {
+            if (pickButtonSprite != null) return pickButtonSprite;
+#if UNITY_EDITOR
+            pickButtonSprite = LoadSpriteAtPath("Assets/Image/Play/pick_button.png");
+#endif
+            return pickButtonSprite;
+        }
+    }
+    public Sprite DrawClashSprite
+    {
+        get
+        {
+            if (drawClashSprite != null) return drawClashSprite;
+#if UNITY_EDITOR
+            drawClashSprite = LoadSpriteAtPath("Assets/Image/Play/draw_clash.png");
+#endif
+            return drawClashSprite;
+        }
+    }
+    // 라운드 종료 결과 이미지 (DraftController가 참조). 픽 결과 이미지와 동일한 에셋을 공유.
+    public Sprite PickVictorySprite
+    {
+        get
+        {
+            if (pickVictorySprite != null) return pickVictorySprite;
+#if UNITY_EDITOR
+            pickVictorySprite = LoadSpriteAtPath("Assets/Image/Play/Pick_Victory.png");
+#endif
+            return pickVictorySprite;
+        }
+    }
+    public Sprite PickDefeatSprite
+    {
+        get
+        {
+            if (pickDefeatSprite != null) return pickDefeatSprite;
+#if UNITY_EDITOR
+            pickDefeatSprite = LoadSpriteAtPath("Assets/Image/Play/Pick_Defeat.png");
+#endif
+            return pickDefeatSprite;
+        }
+    }
+    public Sprite DrawSprite
+    {
+        get
+        {
+            if (drawSprite != null) return drawSprite;
+#if UNITY_EDITOR
+            drawSprite = LoadSpriteAtPath("Assets/Image/Play/Draw.png");
+#endif
+            return drawSprite;
+        }
+    }
     public Sprite BattingBackgroundSprite => battingBackgroundSprite;
     public Sprite Plus5ButtonSprite => plus5ButtonSprite;
     public Sprite Minus5ButtonSprite => minus5ButtonSprite;
@@ -275,6 +350,12 @@ public class PracticeCardController : MonoBehaviour
     private bool userTakesFirstPickInDraft;
     // 이번 라운드에 활성화된 카드들
     private readonly List<CardFlip> activeCardFlips = new List<CardFlip>();
+
+    // 결과 팝업을 이미지 모드로 표시할 때 사용하는 런타임 생성 Image (resultPopup의 자식, 중앙 배치).
+    private Image resultOutcomeImage;
+    // resultLabel을 감싸는 PopupBox(RawImage 배경 + 라벨) GameObject — 이미지 모드에서는 통째로 숨겨
+    // 결과 이미지만 보이게 한다. (Image가 아니라 RawImage라 컴포넌트 토글 대신 GameObject를 끈다.)
+    private GameObject resultBoxObject;
 
     private void Start()
     {
@@ -407,18 +488,86 @@ public class PracticeCardController : MonoBehaviour
         if (resultPopup == null) return;
 
         var outcome = TypeChart.GetOutcome(userPick.Element, aiPick.Element);
-        if (resultLabel != null)
+
+        // 승/패는 텍스트 대신 이미지(Pick_Victory / Pick_Defeat)만 표시. 무승부는 기존 텍스트 폴백.
+        Sprite outcomeSprite = null;
+        if (outcome == MatchOutcome.Win) outcomeSprite = ResolvePickResultSprite(ref pickVictorySprite, "Pick_Victory");
+        else if (outcome == MatchOutcome.Lose) outcomeSprite = ResolvePickResultSprite(ref pickDefeatSprite, "Pick_Defeat");
+
+        if (outcomeSprite != null)
         {
-            string firstPicker = userPickedFirst ? "내가 먼저" : "AI가 먼저";
-            resultLabel.text =
-                $"[{firstPicker}]\n나: {userPick.Element}\nAI: {aiPick.Element}\n결과: {OutcomeKor(outcome)}";
+            SetResultPopupImage(outcomeSprite); // 이미지만 표시 (텍스트/흰 박스 숨김)
         }
+        else
+        {
+            SetResultPopupImage(null);          // 텍스트 모드 (무승부 또는 스프라이트 미할당)
+            if (resultLabel != null)
+            {
+                string firstPicker = userPickedFirst ? "내가 먼저" : "AI가 먼저";
+                resultLabel.text =
+                    $"[{firstPicker}]\n나: {userPick.Element}\nAI: {aiPick.Element}\n결과: {OutcomeKor(outcome)}";
+            }
+        }
+
         // 확인 버튼은 더 이상 사용하지 않음 — 결과 팝업은 일정 시간 뒤 자동으로 다음 단계로 진입.
         if (confirmButton != null) confirmButton.gameObject.SetActive(false);
         resultPopup.SetActive(true);
 
         if (resultAutoAdvanceCoroutine != null) StopCoroutine(resultAutoAdvanceCoroutine);
         resultAutoAdvanceCoroutine = StartCoroutine(AutoAdvanceResultRoutine());
+    }
+
+    // 와이어된 스프라이트를 우선 사용, 에디터에서는 미와이어 시 Assets/Image/Play에서 자동 로드.
+    private static Sprite ResolvePickResultSprite(ref Sprite cache, string fileName)
+    {
+        if (cache != null) return cache;
+#if UNITY_EDITOR
+        cache = LoadSpriteAtPath($"Assets/Image/Play/{fileName}.png");
+#endif
+        return cache;
+    }
+
+    // 결과 팝업의 표시 모드 전환.
+    //  sprite != null → 이미지 모드: 결과 이미지만 표시(PopupBox = 박스 배경 + 라벨 통째로 숨김)
+    //  sprite == null → 텍스트 모드: 기존처럼 PopupBox(라벨) 표시
+    private void SetResultPopupImage(Sprite sprite)
+    {
+        EnsureResultOutcomeImage();
+        bool imageMode = sprite != null;
+
+        if (resultOutcomeImage != null)
+        {
+            if (imageMode) resultOutcomeImage.sprite = sprite;
+            resultOutcomeImage.gameObject.SetActive(imageMode);
+        }
+        // PopupBox(흰 박스 배경 + 라벨)를 통째로 끄거나 켠다. 텍스트 모드에서는 라벨도 다시 켜준다.
+        if (resultBoxObject != null) resultBoxObject.SetActive(!imageMode);
+        if (resultLabel != null && !imageMode) resultLabel.gameObject.SetActive(true);
+    }
+
+    // 결과 이미지를 표시할 Image를 한 번만 생성하고, PopupBox(라벨의 부모) GameObject 참조를 캐싱한다.
+    private void EnsureResultOutcomeImage()
+    {
+        if (resultPopup == null) return;
+        if (resultBoxObject == null && resultLabel != null && resultLabel.transform.parent != null)
+            resultBoxObject = resultLabel.transform.parent.gameObject;
+        if (resultOutcomeImage != null) return;
+
+        var go = new GameObject("ResultOutcomeImage", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        go.transform.SetParent(resultPopup.transform, false);
+        var rt = (RectTransform)go.transform;
+        rt.anchorMin = new Vector2(0.5f, 0.5f);
+        rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(820f, 600f);
+
+        var img = go.GetComponent<Image>();
+        img.color = Color.white;
+        img.preserveAspect = true;
+        img.raycastTarget = false;
+        resultOutcomeImage = img;
+        go.SetActive(false);
     }
 
     // 결과 팝업을 일정 시간 뒤 자동으로 닫고 OnResultConfirmed로 진행.
@@ -532,6 +681,7 @@ public class PracticeCardController : MonoBehaviour
     // 결과 팝업을 종료 메시지로 재활용하고 확인 버튼을 잠가 더 이상 라운드가 진행되지 않게 한다.
     private void ShowSeriesEndIndicator()
     {
+        SetResultPopupImage(null); // 직전 라운드가 이미지 모드였을 수 있으므로 텍스트 모드로 복원
         if (resultLabel != null)
         {
             string winner = SeriesState.PlayerWonSeries ? "내가" : "상대가";

@@ -1399,13 +1399,22 @@ MonoBehaviour:
   secondPickButtonSprite: {fileID: 233674660302577167, guid: 2c35089559cffb34b8eac30ad8f35eea, type: 3}
   aiChoosingPopupSprite: {fileID: -3412604581904261784, guid: 8001b740a6fb9734c90c0f254ee2d5c7, type: 3}
   pickCompleteNotifySprite: {fileID: 5041977419109595256, guid: da608bee06a1e33419ff4323369cd705, type: 3}
+  pickVictorySprite: {fileID: -4922243874848136330, guid: f4de071659ce88344942089fe1b17d29, type: 3}
+  pickDefeatSprite: {fileID: 5964055226710805585, guid: aca36e10e591b0a488b59298b3e50257, type: 3}
+  drawSprite: {fileID: -8802315299437571360, guid: 381bb4a741bd30646951542be387d4cf, type: 3}
   draftPlayBackgroundSprite: {fileID: 7898836812066141321, guid: 91d063e8ff744fb4d9371dc0b1795a62, type: 3}
-  selectButtonSprite: {fileID: -6551329220299497731, guid: ff9ff4877f0a49947995c5e741c53fdc, type: 3}
+  selectButtonSprite: {fileID: -7881362770456230771, guid: 75a8f00db459efa42ae36af9e99a46bf, type: 3}
   battingBackgroundSprite: {fileID: 4002634972903565961, guid: 42719a6be3f056f44a46e461a5a5688f, type: 3}
   plus5ButtonSprite: {fileID: 9062788436568362780, guid: 76cef5835c4247848a2729c8caede0ae, type: 3}
   minus5ButtonSprite: {fileID: -7334218718252379959, guid: b8ebd51b27cadb440bac4fe430ee45dc, type: 3}
   battingSelectButtonSprite: {fileID: -3324833276754196223, guid: e88b3a19cae73104587fdb79467f0763, type: 3}
   homeButtonSprite: {fileID: -7306881806811910613, guid: b50acf76f3208f840ba73f824ed7f2fa, type: 3}
+  homeConfirmBgSprite: {fileID: 5531827199101377345, guid: 3c0ba6388258b47fba31f22b25827344, type: 3}
+  homeConfirmReturnSprite: {fileID: 8872015642484252314, guid: 7ce11547226e34ff684776f995ed23e2, type: 3}
+  homeConfirmCancelSprite: {fileID: -2068136813906645422, guid: f05e91a27c02846ec91899a64fa1a91f, type: 3}
+  matchStartPopupSprite: {fileID: 3294186307130207199, guid: 2fe003dc8e60eb245a681e1d0fe4920d, type: 3}
+  pickButtonSprite: {fileID: -4324992013665976652, guid: 1e8d1db5e6a6ab841bfff45ef3f25463, type: 3}
+  drawClashSprite: {fileID: -375197291317501311, guid: 33a8f2a2e914b9c498ee83d3e65275f3, type: 3}
   decidingGroup: {fileID: 0}
   draftGroup: {fileID: 0}
   aiPickDelayMin: 0.4

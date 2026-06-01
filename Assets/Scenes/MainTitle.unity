@@ -298,8 +298,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: abeaf5ca3f7701447976a20b818d441d, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   nextSceneName: PracticeMode
   bgmClip: {fileID: 8300000, guid: 8f91db30c63ce40f59e1897abb6fc3dc, type: 3}
   enterButtonClip: {fileID: 8300000, guid: ad028bf66e41e41cfa90a1acf573f091, type: 3}
@@ -523,8 +523,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: -402}
-  m_SizeDelta: {x: 480, y: 320}
+  m_AnchoredPosition: {x: 0, y: -391}
+  m_SizeDelta: {x: 480, y: 145.4624}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &3000000012
 CanvasRenderer:
@@ -554,7 +554,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 2167662672557443051, guid: 8d13cdff59812bf479819f0971e85045, type: 3}
+  m_Sprite: {fileID: 5926483614862930846, guid: eb55e8bdd834082419bafb577b29015d, type: 3}
   m_Type: 0
   m_PreserveAspect: 1
   m_FillCenter: 1
@@ -620,6 +620,18 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
+--- !u!114 &3000000015
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3000000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d22e5b8e4f9b5c5cad2e6f3e7b8c9d02, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &3000000020
 GameObject:
   m_ObjectHideFlags: 0
@@ -695,18 +707,6 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!114 &3000000015
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3000000010}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d22e5b8e4f9b5c5cad2e6f3e7b8c9d02, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
 --- !u!1 &4000000000
 GameObject:
   m_ObjectHideFlags: 0
@@ -749,10 +749,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c11c4a7d3e8f4a4b9c1f5e2d6a7b8c91, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   clickClip: {fileID: 8300000, guid: 415551e563f8245af91c18852c82eefa, type: 3}
+  cardFlipClip: {fileID: 0}
+  draftBgmClip: {fileID: 0}
+  draftCardPickClip: {fileID: 0}
   volume: 1
+  cardFlipVolume: 1
+  draftBgmVolume: 0.6
+  draftCardPickVolume: 1
   excludedScenes:
   - Practice
   - PracticeMode
