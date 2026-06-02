@@ -78,6 +78,8 @@ public class DraftController : MonoBehaviour
     private GameObject finalOrderOverlay;
     private GameObject matchStartPopup;
     private GameObject matchResultPopup;
+    // 라운드 결과 팝업의 "세부 결과" 버튼으로 여는 상세 요약 팝업 (finalOrderOverlay 자식 → 함께 정리됨)
+    private GameObject roundDetailPopup;
     // 카드 길게 누름 시 표시하는 상성표 오버레이 (떼면 자동 닫힘)
     private GameObject relationshipOverlay;
     // 매치 단계 듀얼 플립 오버레이 (베팅 확정 후 카드 뒤집기 연출용; 라운드 시작 시 정리)
@@ -165,9 +167,21 @@ public class DraftController : MonoBehaviour
     private int currentBetMin;
     private int currentBetMax;
     private int pendingPlayerSlotIdx; // 픽 버튼 직후 보관 (베팅 확정 시 사용)
-    // 사이드 패널 헤더 라벨 — 포인트 갱신용
+    // 사이드 패널 헤더 라벨 — 이제 이름만 표시 (BuildUi에서 1회 설정, 변동 없음)
     private TMP_Text playerHeaderLabel;
     private TMP_Text aiHeaderLabel;
+
+    // 시리즈 승 박스 + 수익 위젯 — 중앙 컬럼 상단 좌/우 코너에 배치.
+    // 홈 버튼처럼 Draft 루트(transform)에 부착되어 패 확인/매치 단계의 중앙 컬럼 재빌드에도 유지된다.
+    // 박스는 RoundsToWin개를 만들어 시리즈 승수만큼 채운다(예: BO5 → 3개). 수익은 그 아래 큰 숫자.
+    private readonly List<Image> playerSeriesBoxes = new List<Image>();
+    private readonly List<Image> aiSeriesBoxes = new List<Image>();
+    private TMP_Text playerEarningsLabel;
+    private TMP_Text aiEarningsLabel;
+    // 시리즈 승 박스 색: 빈 칸(어두운 반투명, 흰 외곽선으로 가시성 확보) / 채운 칸(왼쪽=파랑, 오른쪽=빨강)
+    private static readonly Color SeriesBoxEmptyColor = new Color(0f, 0f, 0f, 0.35f);
+    private static readonly Color SeriesBoxPlayerFilledColor = new Color(0.25f, 0.5f, 1f, 1f); // 왼쪽(플레이어) 승: 파랑
+    private static readonly Color SeriesBoxAiFilledColor = new Color(1f, 0.3f, 0.3f, 1f);       // 오른쪽(AI) 승: 빨강
 
     // 카드 색상 상수 — 이제 카드 이미지(Sprite)에 색을 입혀 표현.
     //   기본은 흰색(원본 색 그대로), 선택 시 노란 틴트가 카드 위에 살짝 깔린다.
@@ -615,32 +629,116 @@ public class DraftController : MonoBehaviour
         centerColTransform = center; // 순서변경 단계에서 재사용
 
         // LeftColumn Header (inspector: Left=50.16815, Top=103.5002, Right=-3.163649, Bottom=42.03275)
+        // 헤더에는 플레이어 이름만 표시 (시리즈 승/수익은 중앙 컬럼 위젯으로 분리됨)
         playerHeaderLabel = BuildSidePanel(
-            left, "A (Player)", playerSlotLabels, playerSlotCards,
+            left, "Player", playerSlotLabels, playerSlotCards,
             slotHorizontalInset: 31f,
             headerOffsetMin: new Vector2(50.16815f, 42.03275f),
             headerOffsetMax: new Vector2(3.163649f, -103.5002f));
         // RightColumn Header (inspector: Left=-4.067551, Top=97.6246, Right=58.75545, Bottom=40.2248)
-        // "B (Other Player)" 대신 AI 난이도를 헤더에 직접 표기 (별도 난이도 라벨은 제거됨)
+        // 이름 + 괄호 안 AI 난이도(영문)를 헤더에 표기
         aiHeaderLabel = BuildSidePanel(
-            right, $"B (난이도 : {DifficultyKor(PracticeSettings.Difficulty)})", aiSlotLabels, aiSlotCards,
+            right, $"AI ({DifficultyEng(PracticeSettings.Difficulty)})", aiSlotLabels, aiSlotCards,
             slotHorizontalInset: -31f,
             headerOffsetMin: new Vector2(-4.067551f, 40.2248f),
             headerOffsetMax: new Vector2(-58.75545f, -97.6246f));
         BuildCenter(center, rpsCount);
+        // 시리즈 승 박스 + 수익 위젯 (중앙 컬럼 상단 좌/우). UpdateSidePointsDisplay보다 먼저 만들어야 채워진다.
+        BuildSeriesWidgets();
         UpdateSidePointsDisplay();
     }
 
-    // 좌/우 사이드 패널 헤더에 시리즈 승수 + wallet/earnings를 표시. 매치 진행마다 호출되어 갱신된다.
+    // 중앙 컬럼 위젯의 시리즈 승 박스와 수익 숫자를 갱신. 매치 진행마다 호출된다.
+    // (시리즈 점수는 라운드 종료 시에만 바뀌고, 수익은 매치마다 바뀐다.)
     private void UpdateSidePointsDisplay()
     {
-        if (playerHeaderLabel != null)
-            playerHeaderLabel.text = $"A (Player)\n시리즈 {SeriesState.PlayerScore}승  (목표 {SeriesState.RoundsToWin}승)\n보유 {playerWallet}pt  수익 {FormatSigned(playerEarnings)}";
-        if (aiHeaderLabel != null)
-            aiHeaderLabel.text = $"B (난이도 : {DifficultyKor(PracticeSettings.Difficulty)})\n시리즈 {SeriesState.AiScore}승  (목표 {SeriesState.RoundsToWin}승)\n보유 {aiWallet}pt  수익 {FormatSigned(aiEarnings)}";
+        UpdateSeriesBoxes(playerSeriesBoxes, SeriesState.PlayerScore, SeriesBoxPlayerFilledColor);
+        UpdateSeriesBoxes(aiSeriesBoxes, SeriesState.AiScore, SeriesBoxAiFilledColor);
+        SetEarningsLabel(playerEarningsLabel, playerEarnings);
+        SetEarningsLabel(aiEarningsLabel, aiEarnings);
+    }
+
+    // 앞에서부터 filled개의 박스를 filledColor로 채우고 나머지는 빈 칸 색으로 되돌린다.
+    private static void UpdateSeriesBoxes(List<Image> boxes, int filled, Color filledColor)
+    {
+        for (int i = 0; i < boxes.Count; i++)
+        {
+            if (boxes[i] != null)
+                boxes[i].color = i < filled ? filledColor : SeriesBoxEmptyColor;
+        }
+    }
+
+    // 수익 숫자 — 부호 없이 숫자 그대로, 색은 항상 흰색 (수익은 음수가 되지 않음)
+    private static void SetEarningsLabel(TMP_Text label, int earnings)
+    {
+        if (label == null) return;
+        label.text = earnings.ToString();
+        label.color = Color.white;
     }
 
     private static string FormatSigned(int v) => v > 0 ? "+" + v : v.ToString();
+
+    // 중앙 컬럼 상단 좌/우 코너에 "시리즈 승 박스 + 수익" 위젯 2개를 만든다.
+    // Draft 루트(transform)에 직접 부착 → 패 확인/매치 단계에서 중앙 컬럼이 비워져도 유지된다.
+    // 루트 x 0.2~0.8 구간이 중앙 컬럼이고, x 0.44~0.56엔 홈 버튼이 있으므로 그 양옆 코너를 사용한다.
+    private void BuildSeriesWidgets()
+    {
+        var rootRt = (RectTransform)transform;
+        playerSeriesBoxes.Clear();
+        aiSeriesBoxes.Clear();
+        // 인스펙터 Left/Top/Right/Bottom → offsetMin=(Left,Bottom), offsetMax=(-Right,-Top)
+        // 좌측(플레이어): Left=69, Top=27, Right=-69, Bottom=-27
+        playerEarningsLabel = BuildSeriesWidget(rootRt, new Vector2(0.205f, 0.85f), new Vector2(0.40f, 0.99f),
+            offsetMin: new Vector2(69f, -27f), offsetMax: new Vector2(69f, -27f), boxesOut: playerSeriesBoxes);
+        // 우측(AI): Left=-69, Top=27, Right=69, Bottom=-27
+        aiEarningsLabel = BuildSeriesWidget(rootRt, new Vector2(0.60f, 0.85f), new Vector2(0.795f, 0.99f),
+            offsetMin: new Vector2(-69f, -27f), offsetMax: new Vector2(-69f, -27f), boxesOut: aiSeriesBoxes);
+    }
+
+    // 한쪽 위젯: 위 절반에 시리즈 승 박스 N개(가로 나열, N=RoundsToWin), 아래 절반에 큰 수익 숫자.
+    private TMP_Text BuildSeriesWidget(RectTransform parent, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax, List<Image> boxesOut)
+    {
+        var container = MakeRect("SeriesWidget", parent, anchorMin, anchorMax);
+        container.offsetMin = offsetMin;
+        container.offsetMax = offsetMax;
+
+        int boxCount = Mathf.Max(1, SeriesState.RoundsToWin);
+        // 박스 줄 (위쪽 절반)
+        var boxRow = MakeRect("SeriesBoxes", container, new Vector2(0f, 0.5f), new Vector2(1f, 1f));
+
+        // 개수와 무관하게 항상 같은 정사각형(고정 px) 으로, 가운데 기준 가로 정렬.
+        // 1920x1080 레퍼런스 기준 값 — 캔버스 스케일러가 해상도에 맞게 함께 스케일한다.
+        const float boxSize = 75f;   // 정사각형 한 변(px) — 박스 줄 높이와 비슷한 크기
+        const float boxScale = 0.7f; // 박스 축소 비율
+        const float boxGap = 12f;    // 렌더 크기 기준 박스 사이 간격(px)
+        float step = boxSize * boxScale + boxGap; // 박스 중심 간 간격
+        for (int i = 0; i < boxCount; i++)
+        {
+            // 박스 줄 정중앙에 점 앵커로 두고, 중심에서 좌우로 대칭 배치
+            var box = MakeRect("Box" + i, boxRow, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            box.pivot = new Vector2(0.5f, 0.5f);
+            box.sizeDelta = new Vector2(boxSize, boxSize);
+            box.anchoredPosition = new Vector2((i - (boxCount - 1) / 2f) * step, 0f);
+            box.localScale = new Vector3(boxScale, boxScale, 1f);
+            var boxImg = AddImage(box, SeriesBoxEmptyColor);
+            // 어두운 빈 칸이 잘 보이도록 흰색 외곽선 추가
+            var outline = box.gameObject.AddComponent<Outline>();
+            outline.effectColor = Color.white;
+            outline.effectDistance = new Vector2(2f, 2f);
+            boxesOut.Add(boxImg);
+        }
+
+        // 수익 숫자 (아래쪽 절반, 크게)
+        var earnRect = MakeRect("Earnings", container, new Vector2(0f, 0f), new Vector2(1f, 0.5f));
+        var earnLbl = AddTmpLabel(earnRect, "0", 40f, TextAlignmentOptions.Center);
+        earnLbl.color = Color.white;
+        earnLbl.fontStyle = FontStyles.Bold;
+        earnLbl.enableWordWrapping = false;
+        earnLbl.enableAutoSizing = true;
+        earnLbl.fontSizeMin = 18f;
+        earnLbl.fontSizeMax = 48f;
+        return earnLbl;
+    }
 
     private RectTransform MakeColumn(string name, float xMin, float xMax)
     {
@@ -807,7 +905,10 @@ public class DraftController : MonoBehaviour
 
     private void BuildHomeButton()
     {
-        if (draftHomeButton != null) return; // 이미 만들어졌으면 재사용 (단계 전환 후에도 살아 있음)
+        // 매 라운드 BuildUi가 루트 자식을 모두 Destroy(프레임 끝 지연)하므로, 여기서 옛 버튼 참조를
+        // != null 로 체크해 재사용하려 하면 "아직 파괴 전" 이라 새 버튼을 못 만들고 → 다음 라운드에
+        // 홈 버튼이 사라진다. BuildHomeButton은 라운드당 한 번만 호출되고 단계 전환 중엔 재호출되지
+        // 않으므로(루트 자식이라 단계 전환에도 유지됨), 가드 없이 매 라운드 새로 만드는 게 맞다.
 
         var rootRt = (RectTransform)transform;
         // 중앙 컬럼이 화면의 x 0.2~0.8(폭 60%)에 있으므로, 그 안에서 x 0.4~0.6에 해당하는
@@ -869,7 +970,7 @@ public class DraftController : MonoBehaviour
         msgRt.sizeDelta = new Vector2(720f, 160f);
         msgRt.anchoredPosition = new Vector2(0f, -120f);
         var msgLbl = AddTmpLabel(msgRt, "홈으로 돌아가시겠습니까?\n(진행 중인 라운드는 사라집니다)", 48f, TextAlignmentOptions.Center);
-        msgLbl.color = new Color(0.1f, 0.1f, 0.1f, 1f);
+        msgLbl.color = Color.white;
 
         var returnRt = MakeRect("Return", dialogRt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
         returnRt.sizeDelta = new Vector2(280f, 100f);
@@ -881,7 +982,7 @@ public class DraftController : MonoBehaviour
         var returnBtn = returnRt.gameObject.AddComponent<Button>();
         returnBtn.targetGraphic = returnImg;
         var returnLbl = AddTmpLabel(returnRt, "돌아가기", 40f, TextAlignmentOptions.Center);
-        returnLbl.color = new Color(0.1f, 0.1f, 0.1f, 1f);
+        returnLbl.color = Color.white;
         returnBtn.onClick.AddListener(() => UnityEngine.SceneManagement.SceneManager.LoadScene("PracticeMode"));
 
         var cancelRt = MakeRect("Cancel", dialogRt, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f));
@@ -894,7 +995,7 @@ public class DraftController : MonoBehaviour
         var cancelBtn = cancelRt.gameObject.AddComponent<Button>();
         cancelBtn.targetGraphic = cancelImg;
         var cancelLbl = AddTmpLabel(cancelRt, "취소", 40f, TextAlignmentOptions.Center);
-        cancelLbl.color = new Color(0.1f, 0.1f, 0.1f, 1f);
+        cancelLbl.color = Color.white;
         cancelBtn.onClick.AddListener(() => { if (draftHomeConfirmPopup != null) draftHomeConfirmPopup.SetActive(false); });
 
         draftHomeConfirmPopup = overlayRt.gameObject;
@@ -2287,11 +2388,54 @@ public class DraftController : MonoBehaviour
         boxRt.anchoredPosition = Vector2.zero;
         box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
 
-        var textRect = MakeRect("Content", boxRt, new Vector2(0f, 0.26f), new Vector2(1f, 1f));
-        var content = AddTmpLabel(textRect, BuildMatchSummaryText(), 22f, TextAlignmentOptions.Center);
-        content.color = Color.white;
+        // 기본 화면: 이번 라운드 승/패만 크게 표시 (보유+수익 비교로 결정 — BuildMatchSummaryText와 동일 기준)
+        int playerFinal = playerWallet + playerEarnings;
+        int aiFinal = aiWallet + aiEarnings;
+        string roundResultText;
+        Color roundResultColor;
+        if (playerFinal > aiFinal) { roundResultText = "라운드 승리!"; roundResultColor = new Color(0.4f, 0.8f, 1f, 1f); }
+        else if (playerFinal < aiFinal) { roundResultText = "라운드 패배"; roundResultColor = new Color(1f, 0.45f, 0.45f, 1f); }
+        else { roundResultText = "무승부"; roundResultColor = new Color(1f, 0.9f, 0.5f, 1f); }
 
-        var bottomRect = MakeRect("Bottom", boxRt, new Vector2(0f, 0.02f), new Vector2(1f, 0.24f));
+        // 승/패는 이미지로 표시 (승=Round_Win, 패=Round_Loss). 무승부는 전용 이미지가 없어 텍스트로 폴백.
+        if (practiceController == null)
+            practiceController = FindObjectOfType<PracticeCardController>(true);
+        Sprite roundResultSprite = null;
+        if (practiceController != null)
+        {
+            if (playerFinal > aiFinal) roundResultSprite = practiceController.RoundWinSprite;
+            else if (playerFinal < aiFinal) roundResultSprite = practiceController.RoundLossSprite;
+        }
+
+        var resultRect = MakeRect("RoundResult", boxRt, new Vector2(0f, 0.55f), new Vector2(1f, 0.98f));
+        if (roundResultSprite != null)
+        {
+            var resultImg = AddImage(resultRect, Color.white);
+            resultImg.sprite = roundResultSprite;
+            resultImg.preserveAspect = true;
+        }
+        else
+        {
+            var resultLbl = AddTmpLabel(resultRect, roundResultText, 52f, TextAlignmentOptions.Center);
+            resultLbl.color = roundResultColor;
+            resultLbl.fontStyle = FontStyles.Bold;
+        }
+
+        // 세부 결과 버튼 — 누르면 매치별 상세 + 포인트 요약 팝업을 띄운다
+        var detailRect = MakeRect("DetailButton", boxRt, new Vector2(0.33f, 0.42f), new Vector2(0.67f, 0.54f));
+        var detailImg = AddImage(detailRect, Color.white);
+        var detailLbl = AddTmpLabel(detailRect, "세부 결과", 24f, TextAlignmentOptions.Center);
+        detailLbl.color = Color.black;
+        var detailBtn = detailRect.gameObject.AddComponent<Button>();
+        detailBtn.targetGraphic = detailImg;
+        var dc = detailBtn.colors;
+        dc.normalColor = Color.white;
+        dc.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+        dc.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        detailBtn.colors = dc;
+        detailBtn.onClick.AddListener(ShowRoundDetailPopup);
+
+        var bottomRect = MakeRect("Bottom", boxRt, new Vector2(0f, 0.04f), new Vector2(1f, 0.34f));
         if (SeriesState.IsSeriesOver)
         {
             string winner = SeriesState.PlayerWonSeries ? "내가" : "상대가";
@@ -2343,6 +2487,53 @@ public class DraftController : MonoBehaviour
             btn.colors = colors;
             btn.onClick.AddListener(OnNextRoundClicked);
         }
+    }
+
+    // "세부 결과" 버튼 → 매치별 상세 + 포인트 요약을 별도 팝업으로 표시. 닫기 버튼으로 닫는다.
+    // finalOrderOverlay 자식으로 올려 라운드 결과 위에 겹쳐 뜨고, 다음 라운드 진입 시 함께 정리된다.
+    private void ShowRoundDetailPopup()
+    {
+        if (finalOrderOverlay == null) return;
+        if (roundDetailPopup != null) Destroy(roundDetailPopup);
+
+        var overlay = new GameObject("RoundDetailPopup", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        overlay.transform.SetParent(finalOrderOverlay.transform, false);
+        var oRt = (RectTransform)overlay.transform;
+        oRt.anchorMin = Vector2.zero;
+        oRt.anchorMax = Vector2.one;
+        oRt.offsetMin = Vector2.zero;
+        oRt.offsetMax = Vector2.zero;
+        overlay.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.88f);
+        overlay.transform.SetAsLastSibling();
+
+        var box = new GameObject("DetailBox", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        box.transform.SetParent(overlay.transform, false);
+        var boxRt = (RectTransform)box.transform;
+        boxRt.anchorMin = new Vector2(0.5f, 0.5f);
+        boxRt.anchorMax = new Vector2(0.5f, 0.5f);
+        boxRt.pivot = new Vector2(0.5f, 0.5f);
+        boxRt.sizeDelta = new Vector2(880f, 820f);
+        boxRt.anchoredPosition = Vector2.zero;
+        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.98f);
+
+        var textRect = MakeRect("Content", boxRt, new Vector2(0f, 0.14f), new Vector2(1f, 0.98f));
+        var content = AddTmpLabel(textRect, BuildMatchSummaryText(), 22f, TextAlignmentOptions.Center);
+        content.color = Color.white;
+
+        var closeRect = MakeRect("CloseButton", boxRt, new Vector2(0.35f, 0.03f), new Vector2(0.65f, 0.12f));
+        var closeImg = AddImage(closeRect, Color.white);
+        var closeLbl = AddTmpLabel(closeRect, "닫기", 24f, TextAlignmentOptions.Center);
+        closeLbl.color = Color.black;
+        var closeBtn = closeRect.gameObject.AddComponent<Button>();
+        closeBtn.targetGraphic = closeImg;
+        var cc = closeBtn.colors;
+        cc.normalColor = Color.white;
+        cc.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+        cc.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        closeBtn.colors = cc;
+        closeBtn.onClick.AddListener(() => { if (roundDetailPopup != null) { Destroy(roundDetailPopup); roundDetailPopup = null; } });
+
+        roundDetailPopup = overlay;
     }
 
     // 시리즈 종료 후 설정(PracticeMode) 씬으로 이동
@@ -2494,11 +2685,12 @@ public class DraftController : MonoBehaviour
         return img;
     }
 
-    private static string DifficultyKor(PracticeSetupManager.AIDifficulty d) => d switch
+    // AI 난이도 영문 표기 (헤더의 "AI (...)" 괄호 안에 사용)
+    private static string DifficultyEng(PracticeSetupManager.AIDifficulty d) => d switch
     {
-        PracticeSetupManager.AIDifficulty.Easy => "쉬움",
-        PracticeSetupManager.AIDifficulty.Normal => "중간",
-        PracticeSetupManager.AIDifficulty.Hard => "어려움",
+        PracticeSetupManager.AIDifficulty.Easy => "Easy",
+        PracticeSetupManager.AIDifficulty.Normal => "Normal",
+        PracticeSetupManager.AIDifficulty.Hard => "Hard",
         _ => "-"
     };
 

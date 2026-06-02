@@ -177,6 +177,8 @@ public class PracticeCardController : MonoBehaviour
     [SerializeField] private Sprite pickVictorySprite;           // Pick_Victory (승리 시)
     [SerializeField] private Sprite pickDefeatSprite;            // Pick_Defeat (패배 시)
     [SerializeField] private Sprite drawSprite;                  // Draw (무승부 시)
+    [SerializeField] private Sprite roundWinSprite;              // Round_Win (라운드 승리 시)
+    [SerializeField] private Sprite roundLossSprite;             // Round_Loss (라운드 패배 시)
 
     // 드래프트(밴픽)/베팅 단계에 사용할 스프라이트. DraftController가 런타임에 부착되므로 여기서 보관하고 public 접근자로 노출.
     [SerializeField] private Sprite draftPlayBackgroundSprite;   // Draft_Play_Background
@@ -261,6 +263,28 @@ public class PracticeCardController : MonoBehaviour
             drawSprite = LoadSpriteAtPath("Assets/Image/Play/Draw.png");
 #endif
             return drawSprite;
+        }
+    }
+    public Sprite RoundWinSprite
+    {
+        get
+        {
+            if (roundWinSprite != null) return roundWinSprite;
+#if UNITY_EDITOR
+            roundWinSprite = LoadSpriteAtPath("Assets/Image/Play/Round_Win.png");
+#endif
+            return roundWinSprite;
+        }
+    }
+    public Sprite RoundLossSprite
+    {
+        get
+        {
+            if (roundLossSprite != null) return roundLossSprite;
+#if UNITY_EDITOR
+            roundLossSprite = LoadSpriteAtPath("Assets/Image/Play/Round_Loss.png");
+#endif
+            return roundLossSprite;
         }
     }
     public Sprite BattingBackgroundSprite => battingBackgroundSprite;
