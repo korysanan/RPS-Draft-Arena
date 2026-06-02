@@ -194,6 +194,7 @@ public class PracticeCardController : MonoBehaviour
     [SerializeField] private Sprite matchStartPopupSprite;       // Match_Start_Popup (드래프트 종료 후 "시합 시작" 스플래시)
     [SerializeField] private Sprite pickButtonSprite;            // pick_button (매치 단계 픽 버튼 배경)
     [SerializeField] private Sprite drawClashSprite;             // draw_clash (무승부 시 카드 충돌 임팩트 이미지)
+    [SerializeField] private Sprite cardCrackSprite;             // card_crack (승패 시 진 카드를 때릴 때 임팩트 이미지)
 
     // DraftController에서 참조하기 위한 public 접근자
     public Sprite DraftPlayBackgroundSprite => draftPlayBackgroundSprite;
@@ -229,6 +230,17 @@ public class PracticeCardController : MonoBehaviour
             drawClashSprite = LoadSpriteAtPath("Assets/Image/Play/draw_clash.png");
 #endif
             return drawClashSprite;
+        }
+    }
+    public Sprite CardCrackSprite
+    {
+        get
+        {
+            if (cardCrackSprite != null) return cardCrackSprite;
+#if UNITY_EDITOR
+            cardCrackSprite = LoadSpriteAtPath("Assets/Image/Play/card_crack.png");
+#endif
+            return cardCrackSprite;
         }
     }
     // 라운드 종료 결과 이미지 (DraftController가 참조). 픽 결과 이미지와 동일한 에셋을 공유.

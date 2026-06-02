@@ -84,6 +84,10 @@ public class DraftController : MonoBehaviour
     private GameObject relationshipOverlay;
     // 매치 단계 듀얼 플립 오버레이 (베팅 확정 후 카드 뒤집기 연출용; 라운드 시작 시 정리)
     private GameObject duelFlipOverlay;
+    // 드래프트 단계 CenterColumn 좌하단의 작은 버튼 + 누르고 있는 동안 표시되는 팝업 (떼면 자동 닫힘)
+    private GameObject draftInfoButton;
+    private GameObject draftInfoPopup;
+    private int currentRpsCount;   // 이번 라운드 RPS 수(3/5/7) — 안내 팝업 이미지 선택용
 
     // 베팅(포인트) 시스템
     private const int StartingPoints = 100;
@@ -161,6 +165,7 @@ public class DraftController : MonoBehaviour
     // 베팅 팝업 상태/UI
     private GameObject betPopup;
     private TMP_Text betValueLabel;
+    private TMP_Text betTimerLabel;   // 베팅 팝업 안의 남은 시간 표시 (픽~베팅 공통 20초 타이머)
     private Button betMinusBtn;
     private Button betPlusBtn;
     private int currentBetValue;
@@ -207,8 +212,10 @@ public class DraftController : MonoBehaviour
         if (matchStartPopup != null) { Destroy(matchStartPopup); matchStartPopup = null; }
         if (matchResultPopup != null) { Destroy(matchResultPopup); matchResultPopup = null; }
         if (betPopup != null) { Destroy(betPopup); betPopup = null; }
+        betTimerLabel = null;
         if (relationshipOverlay != null) { Destroy(relationshipOverlay); relationshipOverlay = null; }
         if (duelFlipOverlay != null) { Destroy(duelFlipOverlay); duelFlipOverlay = null; }
+        if (draftInfoPopup != null) { Destroy(draftInfoPopup); draftInfoPopup = null; }
         // 매치 단계 잔여 상태 정리 (좌/우 슬롯 오버레이는 BuildUi의 자식 destroy에 함께 사라지므로 리스트만 비움)
         playerMatchHistory.Clear();
         aiMatchHistory.Clear();
@@ -799,6 +806,8 @@ public class DraftController : MonoBehaviour
     // 중앙: 홈 버튼 + 정보 라벨("남은 시간 / 차례") + 가운데 카드 영역
     private void BuildCenter(RectTransform col, int rpsCount)
     {
+        currentRpsCount = rpsCount;
+
         // 최상단 중앙: 홈 버튼 — 누르면 확인 팝업 표시. Draft 루트에 부착되어 단계 전환 후에도 유지된다.
         BuildHomeButton();
 
@@ -895,6 +904,90 @@ public class DraftController : MonoBehaviour
         confirmPickButton.colors = colors;
         confirmPickButton.onClick.AddListener(OnConfirmPickClicked);
         confirmPickButton.interactable = false; // 시작 시: 선택된 카드가 없으므로 비활성
+
+        // 상성표(차트) 버튼 — 홈 버튼처럼 Draft 루트에 부착해 단계 전환(패 확인/매치)에도 유지된다.
+        BuildChartButton();
+    }
+
+    // 상성표 버튼: 누르고 있는 동안 RPS 안내 팝업을 표시. 홈 버튼과 동일하게 Draft 루트(transform)에
+    // 직접 부착해 centerColTransform 자식이 통째로 파괴되는 단계 전환에도 사라지지 않게 한다.
+    private void BuildChartButton()
+    {
+        // BuildHomeButton과 동일한 이유로 가드 없이 매 라운드 새로 만든다(루트 자식이라 단계 전환엔 유지됨).
+        var rootRt = (RectTransform)transform;
+        // CenterColumn(루트 x 0.2~0.8, y 0~1)의 좌하단 0.02~0.12 / 0.02~0.11에 해당하는 루트 좌표로 환산.
+        var infoBtnRect = MakeRect("DraftInfoButton", rootRt, new Vector2(0.212f, 0.02f), new Vector2(0.272f, 0.11f));
+        // 인스펙터 기준 Left=27, Top=-19, Right=-27, Bottom=19
+        infoBtnRect.offsetMin = new Vector2(27f, 19f);
+        infoBtnRect.offsetMax = new Vector2(27f, 19f);
+        infoBtnRect.SetAsLastSibling(); // 다른 단계 UI 위에 그려지도록
+        var infoBtnImg = AddImage(infoBtnRect, Color.white);
+        var infoBtnSprite = LoadCompetitionSprite("btn_chart_circle.png");
+        if (infoBtnSprite != null) infoBtnImg.sprite = infoBtnSprite;
+        infoBtnImg.preserveAspect = true;
+        var infoBtn = infoBtnRect.gameObject.AddComponent<Button>();
+        infoBtn.targetGraphic = infoBtnImg;
+        var infoColors = infoBtn.colors;
+        infoColors.normalColor = Color.white;
+        infoColors.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+        infoColors.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        infoBtn.colors = infoColors;
+        // duration 0 → 누르는 즉시 onLongPressStart, 떼면 onLongPressEnd (= 누르고 있는 동안만 팝업 표시)
+        var infoPress = infoBtnRect.gameObject.AddComponent<CardPressHandler>();
+        infoPress.longPressDuration = 0f;
+        infoPress.onLongPressStart = ShowDraftInfoPopup;
+        infoPress.onLongPressEnd = HideDraftInfoPopup;
+        draftInfoButton = infoBtnRect.gameObject;
+    }
+
+    // 좌하단 버튼을 누르고 있는 동안 표시되는 팝업. 내용 이미지는 추후 적용 예정 — 지금은 자리만 잡은 빈 박스.
+    private void ShowDraftInfoPopup()
+    {
+        if (draftInfoPopup != null) { Destroy(draftInfoPopup); draftInfoPopup = null; }
+
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+
+        draftInfoPopup = new GameObject("DraftInfoPopup",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        draftInfoPopup.transform.SetParent(canvas.transform, false);
+        var overlayRt = (RectTransform)draftInfoPopup.transform;
+        overlayRt.anchorMin = Vector2.zero;
+        overlayRt.anchorMax = Vector2.one;
+        overlayRt.offsetMin = Vector2.zero;
+        overlayRt.offsetMax = Vector2.zero;
+        var bgImg = draftInfoPopup.GetComponent<Image>();
+        bgImg.color = new Color(0f, 0f, 0f, 0.6f);
+        bgImg.raycastTarget = false; // 버튼이 계속 포인터 이벤트(뗌 감지)를 받도록 함
+        draftInfoPopup.transform.SetAsLastSibling();
+
+        // 가운데에 선택한 RPS 수에 맞는 안내 이미지 (rps3/5/7.png). 비율 유지.
+        var boxGo = new GameObject("Box", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        boxGo.transform.SetParent(draftInfoPopup.transform, false);
+        var boxRt = (RectTransform)boxGo.transform;
+        boxRt.anchorMin = new Vector2(0.15f, 0.15f);
+        boxRt.anchorMax = new Vector2(0.85f, 0.85f);
+        boxRt.offsetMin = Vector2.zero;
+        boxRt.offsetMax = Vector2.zero;
+        var boxImg = boxGo.GetComponent<Image>();
+        var rpsSprite = LoadCompetitionSprite($"rps{currentRpsCount}.png");
+        if (rpsSprite != null)
+        {
+            boxImg.sprite = rpsSprite;
+            boxImg.color = Color.white;
+            boxImg.preserveAspect = true;
+        }
+        else
+        {
+            boxImg.color = new Color(0.12f, 0.12f, 0.12f, 0.97f); // 스프라이트 미발견 시 폴백
+        }
+        boxImg.raycastTarget = false;
+    }
+
+    // 버튼에서 손을 떼는(또는 영역을 벗어나는) 즉시 팝업을 닫는다.
+    private void HideDraftInfoPopup()
+    {
+        if (draftInfoPopup != null) { Destroy(draftInfoPopup); draftInfoPopup = null; }
     }
 
     // 드래프트 화면 최상단 중앙의 홈 버튼. 클릭 시 확인 팝업을 띄우고, "돌아가기"면 PracticeMode 씬으로 복귀.
@@ -1024,6 +1117,7 @@ public class DraftController : MonoBehaviour
         if (turnTimerCoroutine != null) { StopCoroutine(turnTimerCoroutine); turnTimerCoroutine = null; }
         // 길게 누름 중이던 카드가 위 destroy로 사라지면 PointerUp이 안 와서 오버레이가 남을 수 있음 → 강제 정리
         HideRelationshipChart();
+        HideDraftInfoPopup();
 
         // 매치 상태 초기화
         playerUsed = new bool[PicksPerSide];
@@ -1264,29 +1358,42 @@ public class DraftController : MonoBehaviour
     private void OnMatchPickClicked()
     {
         if (selectedMatchSlotIndex < 0) return;
-        if (matchTimerCoroutine != null) { StopCoroutine(matchTimerCoroutine); matchTimerCoroutine = null; }
+        // 타이머는 멈추지 않는다 — 픽~베팅을 합쳐 20초 안에 끝내야 하므로 베팅 동안에도 계속 흐른다.
         foreach (var b in matchCardButtons) if (b != null) b.interactable = false;
         if (matchPickButton != null) matchPickButton.interactable = false;
         pendingPlayerSlotIdx = selectedMatchSlotIndex;
         ShowBetPopup();
     }
 
-    // 20초 카운트다운 — 만료 시 자동 픽 (선택된 카드 또는 미사용 중 무작위)
+    // 20초 카운트다운 — 픽~베팅 전 과정을 포함한다. 만료 시:
+    //   베팅 팝업이 떠 있으면(픽 완료) → 현재 적용된 베팅 값으로 자동 확정
+    //   아직 픽 전이면 → 자동 픽(선택 카드 또는 미사용 중 무작위) + 최소 베팅
     private IEnumerator MatchPickTimerRoutine()
     {
         float remaining = MatchPickTimeLimit;
         while (remaining > 0f)
         {
-            if (matchTimerLabel != null)
-            {
-                int secs = Mathf.CeilToInt(Mathf.Max(0f, remaining));
-                matchTimerLabel.text = $"남은 시간 : {secs}초";
-            }
+            int secs = Mathf.CeilToInt(Mathf.Max(0f, remaining));
+            if (matchTimerLabel != null) matchTimerLabel.text = $"남은 시간 : {secs}초";
+            if (betTimerLabel != null) betTimerLabel.text = $"남은 시간 : {secs}초";
             yield return null;
             remaining -= Time.deltaTime;
         }
         if (matchTimerLabel != null) matchTimerLabel.text = "남은 시간 : 0초";
-        AutoMatchPick();
+        if (betTimerLabel != null) betTimerLabel.text = "남은 시간 : 0초";
+
+        if (betPopup != null)
+        {
+            // 베팅 중 시간 초과 → 현재 적용된 베팅 값 그대로 확정
+            int bet = currentBetValue;
+            Destroy(betPopup); betPopup = null;
+            betTimerLabel = null;
+            StartMatchResolution(pendingPlayerSlotIdx, bet);
+        }
+        else
+        {
+            AutoMatchPick();
+        }
     }
 
     // 시간 초과: 카드는 (선택 있으면 그것, 없으면 미사용 중 무작위), 베팅은 (마지막이면 전액, 아니면 최소 5pt)
@@ -1363,6 +1470,11 @@ public class DraftController : MonoBehaviour
             forced ? $"최종 매치 — 남은 포인트 전액 베팅" : $"포인트 베팅 — 매치 {currentMatchIndex + 1}/{TotalMatches}",
             30f, TextAlignmentOptions.Center);
         title.color = new Color(1f, 0.85f, 0.4f, 1f);
+
+        // 남은 시간 — 픽~베팅 공통 20초 타이머. MatchPickTimerRoutine이 매 프레임 갱신한다.
+        var betTimerRect = MakeRect("BetTimer", boxRt, new Vector2(0f, 0.93f), new Vector2(1f, 1f));
+        betTimerLabel = AddTmpLabel(betTimerRect, "남은 시간 : --초", 22f, TextAlignmentOptions.Center);
+        betTimerLabel.color = new Color(1f, 0.6f, 0.6f, 1f);
 
         // 정보 (inspector: Top=28.4, Bottom=-28.4)
         var infoRect = MakeRect("Info", boxRt, new Vector2(0.05f, 0.58f), new Vector2(0.95f, 0.79f));
@@ -1463,7 +1575,9 @@ public class DraftController : MonoBehaviour
     private void OnBetConfirmed()
     {
         int bet = currentBetValue;
+        if (matchTimerCoroutine != null) { StopCoroutine(matchTimerCoroutine); matchTimerCoroutine = null; }
         if (betPopup != null) { Destroy(betPopup); betPopup = null; }
+        betTimerLabel = null;
         StartMatchResolution(pendingPlayerSlotIdx, bet);
     }
 
@@ -1989,7 +2103,20 @@ public class DraftController : MonoBehaviour
         fRt.offsetMin = Vector2.zero;
         fRt.offsetMax = Vector2.zero;
         var fImg = flash.GetComponent<Image>();
-        fImg.color = new Color(1f, 1f, 1f, 0.85f);
+        // 진 카드를 때릴 때 임팩트 이미지: card_crack 스프라이트가 있으면 사용, 없으면 기존 흰색 플래시.
+        // card_crack은 페이드아웃하지 않고 카드(오버레이)가 사라질 때까지 진 카드 위에 유지한다.
+        var crackSprite = practiceController != null ? practiceController.CardCrackSprite : null;
+        bool useCrack = crackSprite != null;
+        if (useCrack)
+        {
+            fImg.sprite = crackSprite;
+            fImg.preserveAspect = true;
+            fImg.color = Color.white;
+        }
+        else
+        {
+            fImg.color = new Color(1f, 1f, 1f, 0.85f);
+        }
         fImg.raycastTarget = false;
         flash.transform.SetAsLastSibling();
 
@@ -2009,8 +2136,8 @@ public class DraftController : MonoBehaviour
             {
                 defenderImg.color = Color.Lerp(new Color(1f, 0.3f, 0.3f, 1f), defenderOriginalColor, k);
             }
-            // 임팩트 플래시 페이드아웃
-            if (fImg != null)
+            // 임팩트 플래시 페이드아웃 — 흰색 플래시 폴백일 때만. card_crack은 그대로 유지.
+            if (fImg != null && !useCrack)
             {
                 float fk = Mathf.Clamp01(t / flashFadeTime);
                 fImg.color = new Color(1f, 1f, 1f, Mathf.Lerp(0.85f, 0f, fk));
@@ -2019,7 +2146,8 @@ public class DraftController : MonoBehaviour
         }
         defender.rt.anchoredPosition = defenderHome;
         if (defenderImg != null) defenderImg.color = defenderOriginalColor;
-        if (flash != null) Destroy(flash);
+        // card_crack은 카드(오버레이)가 사라질 때 함께 정리되므로 여기서 제거하지 않는다.
+        if (flash != null && !useCrack) Destroy(flash);
 
         // 4) 공격자 복귀
         const float returnTime = 0.2f;
@@ -2384,13 +2512,29 @@ public class DraftController : MonoBehaviour
         boxRt.anchorMin = new Vector2(0.5f, 0.5f);
         boxRt.anchorMax = new Vector2(0.5f, 0.5f);
         boxRt.pivot = new Vector2(0.5f, 0.5f);
-        boxRt.sizeDelta = new Vector2(820f, 760f);
+        boxRt.sizeDelta = new Vector2(720f, 806f);
         boxRt.anchoredPosition = Vector2.zero;
-        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
 
         // 기본 화면: 이번 라운드 승/패만 크게 표시 (보유+수익 비교로 결정 — BuildMatchSummaryText와 동일 기준)
         int playerFinal = playerWallet + playerEarnings;
         int aiFinal = aiWallet + aiEarnings;
+
+        // 팝업 배경 프레임: 승리=popup_win, 패배=popup_loss. 무승부는 전용 이미지가 없어 어두운 박스로 폴백.
+        var boxImg = box.GetComponent<Image>();
+        Sprite frameSprite = null;
+        if (playerFinal > aiFinal) frameSprite = LoadRoundResultSprite("popup_win.png");
+        else if (playerFinal < aiFinal) frameSprite = LoadRoundResultSprite("popup_loss.png");
+        if (frameSprite != null)
+        {
+            boxImg.sprite = frameSprite;
+            boxImg.color = Color.white;
+            boxImg.preserveAspect = true;
+        }
+        else
+        {
+            boxImg.color = new Color(0.12f, 0.12f, 0.12f, 0.97f);
+        }
+
         string roundResultText;
         Color roundResultColor;
         if (playerFinal > aiFinal) { roundResultText = "라운드 승리!"; roundResultColor = new Color(0.4f, 0.8f, 1f, 1f); }
@@ -2407,7 +2551,7 @@ public class DraftController : MonoBehaviour
             else if (playerFinal < aiFinal) roundResultSprite = practiceController.RoundLossSprite;
         }
 
-        var resultRect = MakeRect("RoundResult", boxRt, new Vector2(0f, 0.55f), new Vector2(1f, 0.98f));
+        var resultRect = MakeRect("RoundResult", boxRt, new Vector2(0.12f, 0.50f), new Vector2(0.88f, 0.92f));
         if (roundResultSprite != null)
         {
             var resultImg = AddImage(resultRect, Color.white);
@@ -2421,71 +2565,31 @@ public class DraftController : MonoBehaviour
             resultLbl.fontStyle = FontStyles.Bold;
         }
 
-        // 세부 결과 버튼 — 누르면 매치별 상세 + 포인트 요약 팝업을 띄운다
-        var detailRect = MakeRect("DetailButton", boxRt, new Vector2(0.33f, 0.42f), new Vector2(0.67f, 0.54f));
-        var detailImg = AddImage(detailRect, Color.white);
-        var detailLbl = AddTmpLabel(detailRect, "세부 결과", 24f, TextAlignmentOptions.Center);
-        detailLbl.color = Color.black;
-        var detailBtn = detailRect.gameObject.AddComponent<Button>();
-        detailBtn.targetGraphic = detailImg;
-        var dc = detailBtn.colors;
-        dc.normalColor = Color.white;
-        dc.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
-        dc.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
-        detailBtn.colors = dc;
+        // 세부 결과 버튼 (btn_detail) — 누르면 매치별 상세 + 포인트 요약 팝업을 띄운다
+        var detailBtn = AddImageButton(boxRt, "DetailButton", new Vector2(0.19f, 0.34f), new Vector2(0.81f, 0.50f), LoadRoundResultSprite("btn_detail.png"));
         detailBtn.onClick.AddListener(ShowRoundDetailPopup);
 
-        var bottomRect = MakeRect("Bottom", boxRt, new Vector2(0f, 0.04f), new Vector2(1f, 0.34f));
         if (SeriesState.IsSeriesOver)
         {
-            string winner = SeriesState.PlayerWonSeries ? "내가" : "상대가";
-            var endRect = MakeRect("EndLabel", bottomRect, new Vector2(0f, 0.55f), new Vector2(1f, 1f));
+            string winner = SeriesState.PlayerWonSeries ? "Player 승리!" : "Player 패배!";
+            var endRect = MakeRect("EndLabel", boxRt, new Vector2(0.08f, 0.26f), new Vector2(0.92f, 0.33f));
             var endLbl = AddTmpLabel(endRect,
-                $"시리즈 종료 — {winner} 우승!",
+                $"시리즈 종료 — {winner}",
                 28f, TextAlignmentOptions.Center);
             endLbl.color = new Color(1f, 0.85f, 0.4f, 1f);
 
-            // 설정 이동 / 재시작 두 버튼 (좌/우)
-            var homeRect = MakeRect("HomeButton", bottomRect, new Vector2(0.10f, 0.05f), new Vector2(0.46f, 0.50f));
-            var homeImg = AddImage(homeRect, Color.white);
-            var homeLbl = AddTmpLabel(homeRect, "설정 이동", 24f, TextAlignmentOptions.Center);
-            homeLbl.color = Color.black;
-            var homeBtn = homeRect.gameObject.AddComponent<Button>();
-            homeBtn.targetGraphic = homeImg;
-            var hc = homeBtn.colors;
-            hc.normalColor = Color.white;
-            hc.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
-            hc.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
-            homeBtn.colors = hc;
+            // 설정 이동(btn_settings) / 재시작(btn_restart) 두 버튼 (좌/우)
+            var homeBtn = AddImageButton(boxRt, "HomeButton", new Vector2(0.07f, 0.12f), new Vector2(0.49f, 0.23f), LoadRoundResultSprite("btn_settings.png"));
             homeBtn.onClick.AddListener(OnSeriesEndHomeClicked);
 
-            var restartRect = MakeRect("RestartButton", bottomRect, new Vector2(0.54f, 0.05f), new Vector2(0.90f, 0.50f));
-            var restartImg = AddImage(restartRect, Color.white);
-            var restartLbl = AddTmpLabel(restartRect, "재시작", 24f, TextAlignmentOptions.Center);
-            restartLbl.color = Color.black;
-            var restartBtn = restartRect.gameObject.AddComponent<Button>();
-            restartBtn.targetGraphic = restartImg;
-            var rc = restartBtn.colors;
-            rc.normalColor = Color.white;
-            rc.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
-            rc.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
-            restartBtn.colors = rc;
+            var restartBtn = AddImageButton(boxRt, "RestartButton", new Vector2(0.51f, 0.12f), new Vector2(0.93f, 0.23f), LoadRoundResultSprite("btn_restart.png"));
             restartBtn.onClick.AddListener(OnSeriesEndRestartClicked);
         }
         else
         {
-            var btnRect = MakeRect("NextRoundButton", bottomRect, new Vector2(0.35f, 0.20f), new Vector2(0.65f, 0.80f));
-            var btnImg = AddImage(btnRect, Color.white);
-            var btnLbl = AddTmpLabel(btnRect, "다음 라운드", 26f, TextAlignmentOptions.Center);
-            btnLbl.color = Color.black;
-            var btn = btnRect.gameObject.AddComponent<Button>();
-            btn.targetGraphic = btnImg;
-            var colors = btn.colors;
-            colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
-            colors.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
-            btn.colors = colors;
-            btn.onClick.AddListener(OnNextRoundClicked);
+            // 다음 라운드 버튼 (btn_next)
+            var nextBtn = AddImageButton(boxRt, "NextRoundButton", new Vector2(0.19f, 0.12f), new Vector2(0.81f, 0.28f), LoadRoundResultSprite("btn_next.png"));
+            nextBtn.onClick.AddListener(OnNextRoundClicked);
         }
     }
 
@@ -2512,25 +2616,34 @@ public class DraftController : MonoBehaviour
         boxRt.anchorMin = new Vector2(0.5f, 0.5f);
         boxRt.anchorMax = new Vector2(0.5f, 0.5f);
         boxRt.pivot = new Vector2(0.5f, 0.5f);
-        boxRt.sizeDelta = new Vector2(880f, 820f);
+        boxRt.sizeDelta = new Vector2(720f, 806f);
         boxRt.anchoredPosition = Vector2.zero;
-        box.GetComponent<Image>().color = new Color(0.12f, 0.12f, 0.12f, 0.98f);
 
-        var textRect = MakeRect("Content", boxRt, new Vector2(0f, 0.14f), new Vector2(1f, 0.98f));
+        // 세부 결과 팝업도 라운드 결과와 동일한 프레임(승리=popup_win, 패배=popup_loss)을 배경으로 사용. 무승부는 어두운 박스로 폴백.
+        int playerFinal = playerWallet + playerEarnings;
+        int aiFinal = aiWallet + aiEarnings;
+        var boxImg = box.GetComponent<Image>();
+        Sprite frameSprite = null;
+        if (playerFinal > aiFinal) frameSprite = LoadRoundResultSprite("popup_win.png");
+        else if (playerFinal < aiFinal) frameSprite = LoadRoundResultSprite("popup_loss.png");
+        if (frameSprite != null)
+        {
+            boxImg.sprite = frameSprite;
+            boxImg.color = Color.white;
+            boxImg.preserveAspect = true;
+        }
+        else
+        {
+            boxImg.color = new Color(0.12f, 0.12f, 0.12f, 0.98f);
+        }
+
+        // 내용은 프레임 안쪽 영역에 배치
+        var textRect = MakeRect("Content", boxRt, new Vector2(0.1f, 0.18f), new Vector2(0.9f, 0.92f));
         var content = AddTmpLabel(textRect, BuildMatchSummaryText(), 22f, TextAlignmentOptions.Center);
         content.color = Color.white;
 
-        var closeRect = MakeRect("CloseButton", boxRt, new Vector2(0.35f, 0.03f), new Vector2(0.65f, 0.12f));
-        var closeImg = AddImage(closeRect, Color.white);
-        var closeLbl = AddTmpLabel(closeRect, "닫기", 24f, TextAlignmentOptions.Center);
-        closeLbl.color = Color.black;
-        var closeBtn = closeRect.gameObject.AddComponent<Button>();
-        closeBtn.targetGraphic = closeImg;
-        var cc = closeBtn.colors;
-        cc.normalColor = Color.white;
-        cc.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
-        cc.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
-        closeBtn.colors = cc;
+        // 닫기 버튼 (btn_close)
+        var closeBtn = AddImageButton(boxRt, "CloseButton", new Vector2(0.30f, 0.06f), new Vector2(0.70f, 0.15f), LoadRoundResultSprite("btn_close.png"));
         closeBtn.onClick.AddListener(() => { if (roundDetailPopup != null) { Destroy(roundDetailPopup); roundDetailPopup = null; } });
 
         roundDetailPopup = overlay;
@@ -2683,6 +2796,53 @@ public class DraftController : MonoBehaviour
         var img = target.gameObject.AddComponent<Image>();
         img.color = color;
         return img;
+    }
+
+#if UNITY_EDITOR
+    // 에셋 경로 → 스프라이트 캐시 (에디터 자동 로드).
+    private static readonly Dictionary<string, Sprite> editorSpriteCache = new Dictionary<string, Sprite>();
+#endif
+    // 지정 경로의 스프라이트를 에디터에서 자동 로드/캐시. RoundWin/Loss 스프라이트와 동일한 방식(Multiple 모드 폴백 포함).
+    private static Sprite LoadEditorSprite(string path)
+    {
+#if UNITY_EDITOR
+        if (editorSpriteCache.TryGetValue(path, out var cached) && cached != null) return cached;
+        var sprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        if (sprite == null)
+        {
+            var all = UnityEditor.AssetDatabase.LoadAllAssetsAtPath(path);
+            if (all != null) foreach (var a in all) if (a is Sprite s) { sprite = s; break; }
+        }
+        editorSpriteCache[path] = sprite;
+        return sprite;
+#else
+        return null;
+#endif
+    }
+
+    // 라운드 결과 팝업용 스프라이트 (Assets/Image/Play/Round_Result/).
+    private static Sprite LoadRoundResultSprite(string fileName)
+        => LoadEditorSprite($"Assets/Image/Play/Round_Result/{fileName}");
+
+    // 대회/드래프트 안내용 스프라이트 (Assets/Image/Competition/).
+    private static Sprite LoadCompetitionSprite(string fileName)
+        => LoadEditorSprite($"Assets/Image/Competition/{fileName}");
+
+    // 텍스트 라벨 없이 스프라이트만 표시하는 이미지 버튼 생성 (preserveAspect로 비율 유지).
+    private Button AddImageButton(RectTransform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Sprite sprite)
+    {
+        var rect = MakeRect(name, parent, anchorMin, anchorMax);
+        var img = AddImage(rect, Color.white);
+        img.sprite = sprite;
+        img.preserveAspect = true;
+        var btn = rect.gameObject.AddComponent<Button>();
+        btn.targetGraphic = img;
+        var c = btn.colors;
+        c.normalColor = Color.white;
+        c.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
+        c.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        btn.colors = c;
+        return btn;
     }
 
     // AI 난이도 영문 표기 (헤더의 "AI (...)" 괄호 안에 사용)
