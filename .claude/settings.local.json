@@ -18,7 +18,9 @@
       "Bash(awk 'NR>=4160 && NR<=4260' '/c/Users/ujin0561/Desktop/git_clone/RPS Draft Arena/Assets/Scenes/Single_Play_Mode/Practice.unity')",
       "Bash([ -f \"$f\" ])",
       "Bash(cd \"C:/Users/ujin0561/Desktop/git_clone/RPS Draft Arena/Assets/Image/Play\")",
-      "Bash(echo '__TRACKED_VAR__: __CMDSUB_OUTPUT__')"
+      "Bash(echo '__TRACKED_VAR__: __CMDSUB_OUTPUT__')",
+      "Bash(mv /Users/ujin0561/Documents/GitHub/RPS-Draft-Arena/Assets/Sound/Match_Prev.wav /Users/ujin0561/Documents/GitHub/RPS-Draft-Arena/Assets/Resources/Match_Prev.wav)",
+      "Bash(mv /Users/ujin0561/Documents/GitHub/RPS-Draft-Arena/Assets/Sound/Match_Prev.wav.meta /Users/ujin0561/Documents/GitHub/RPS-Draft-Arena/Assets/Resources/Match_Prev.wav.meta)"
     ]
   }
 }

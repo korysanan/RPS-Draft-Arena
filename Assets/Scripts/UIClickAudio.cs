@@ -11,10 +11,28 @@ public class UIClickAudio : MonoBehaviour
     [SerializeField] private AudioClip cardFlipClip;
     [SerializeField] private AudioClip draftBgmClip;
     [SerializeField] private AudioClip draftCardPickClip;
+    [SerializeField] private AudioClip matchPrevClip;
+    [SerializeField] private AudioClip matchBgmClip;
+    [SerializeField] private AudioClip cardAttackClip;
+    [SerializeField] private AudioClip cardTieClip;
+    [SerializeField] private AudioClip matchVictoryClip;
+    [SerializeField] private AudioClip matchDrawClip;
+    [SerializeField] private AudioClip matchDefeatClip;
+    [SerializeField] private AudioClip seriesVictoryClip;
+    [SerializeField] private AudioClip seriesDefeatClip;
     [SerializeField, Range(0f, 1f)] private float volume = 1f;
     [SerializeField, Range(0f, 1f)] private float cardFlipVolume = 1f;
     [SerializeField, Range(0f, 1f)] private float draftBgmVolume = 0.6f;
     [SerializeField, Range(0f, 1f)] private float draftCardPickVolume = 1f;
+    [SerializeField, Range(0f, 1f)] private float matchPrevVolume = 0.6f;
+    [SerializeField, Range(0f, 1f)] private float matchBgmVolume = 0.6f;
+    [SerializeField, Range(0f, 1f)] private float cardAttackVolume = 1f;
+    [SerializeField, Range(0f, 1f)] private float cardTieVolume = 1f;
+    [SerializeField, Range(0f, 1f)] private float matchVictoryVolume = 1f;
+    [SerializeField, Range(0f, 1f)] private float matchDrawVolume = 1f;
+    [SerializeField, Range(0f, 1f)] private float matchDefeatVolume = 1f;
+    [SerializeField, Range(0f, 1f)] private float seriesVictoryVolume = 0.6f;
+    [SerializeField, Range(0f, 1f)] private float seriesDefeatVolume = 0.6f;
     [SerializeField] private string[] excludedScenes = { "Practice", "PracticeMode" };
 
     private AudioSource source;
@@ -43,6 +61,15 @@ public class UIClickAudio : MonoBehaviour
         if (cardFlipClip == null) cardFlipClip = Resources.Load<AudioClip>("Card_Flip");
         if (draftBgmClip == null) draftBgmClip = Resources.Load<AudioClip>("Draft_BGM");
         if (draftCardPickClip == null) draftCardPickClip = Resources.Load<AudioClip>("Draft_Card_Pick");
+        if (matchPrevClip == null) matchPrevClip = Resources.Load<AudioClip>("Match_Prev");
+        if (matchBgmClip == null) matchBgmClip = Resources.Load<AudioClip>("Match_BGM");
+        if (cardAttackClip == null) cardAttackClip = Resources.Load<AudioClip>("Card_Attack");
+        if (cardTieClip == null) cardTieClip = Resources.Load<AudioClip>("Card_Tie");
+        if (matchVictoryClip == null) matchVictoryClip = Resources.Load<AudioClip>("Match_Victory");
+        if (matchDrawClip == null) matchDrawClip = Resources.Load<AudioClip>("Match_Draw");
+        if (matchDefeatClip == null) matchDefeatClip = Resources.Load<AudioClip>("Match_Defeat");
+        if (seriesVictoryClip == null) seriesVictoryClip = Resources.Load<AudioClip>("Series_Victory");
+        if (seriesDefeatClip == null) seriesDefeatClip = Resources.Load<AudioClip>("Series_Defeat");
 
         source = gameObject.AddComponent<AudioSource>();
         source.playOnAwake = false;
@@ -83,6 +110,63 @@ public class UIClickAudio : MonoBehaviour
         bgmSource.clip = null;
     }
 
+    public void PlayMatchPrev()
+    {
+        if (bgmSource == null || matchPrevClip == null) return;
+        if (bgmSource.clip != matchPrevClip) bgmSource.clip = matchPrevClip;
+        bgmSource.volume = matchPrevVolume;
+        if (!bgmSource.isPlaying) bgmSource.Play();
+    }
+
+    public void StopMatchPrev()
+    {
+        if (bgmSource == null) return;
+        if (bgmSource.clip != matchPrevClip) return;
+        if (bgmSource.isPlaying) bgmSource.Stop();
+        bgmSource.clip = null;
+    }
+
+    // 매치 BGM: 5매치 동안 루프로 끊김 없이 유지. 이미 재생 중이면 그대로 둠.
+    public void PlayMatchBgm()
+    {
+        if (bgmSource == null || matchBgmClip == null) return;
+        if (bgmSource.clip == matchBgmClip && bgmSource.isPlaying) return;
+        bgmSource.clip = matchBgmClip;
+        bgmSource.volume = matchBgmVolume;
+        bgmSource.loop = true;
+        bgmSource.Play();
+    }
+
+    public void StopMatchBgm()
+    {
+        if (bgmSource == null) return;
+        if (bgmSource.clip != matchBgmClip) return;
+        bgmSource.Stop();
+        bgmSource.clip = null;
+    }
+
+    // 시리즈(라운드 최종) 결과 BGM. 다음 라운드 진입 시 EnterHandReviewPhase 의 StopDraftBgm 으로,
+    // 씬 이탈 시에는 OnSceneLoaded → StopDraftBgm 으로 자동 정리된다.
+    public void PlaySeriesVictory()
+    {
+        if (bgmSource == null || seriesVictoryClip == null) return;
+        if (bgmSource.clip == seriesVictoryClip && bgmSource.isPlaying) return;
+        bgmSource.clip = seriesVictoryClip;
+        bgmSource.volume = seriesVictoryVolume;
+        bgmSource.loop = true;
+        bgmSource.Play();
+    }
+
+    public void PlaySeriesDefeat()
+    {
+        if (bgmSource == null || seriesDefeatClip == null) return;
+        if (bgmSource.clip == seriesDefeatClip && bgmSource.isPlaying) return;
+        bgmSource.clip = seriesDefeatClip;
+        bgmSource.volume = seriesDefeatVolume;
+        bgmSource.loop = true;
+        bgmSource.Play();
+    }
+
     public void HookButtonsIn(Scene scene)
     {
         if (IsExcluded(scene.name)) return;
@@ -121,6 +205,31 @@ public class UIClickAudio : MonoBehaviour
     public void PlayDraftCardPick()
     {
         if (draftCardPickClip != null) source.PlayOneShot(draftCardPickClip, draftCardPickVolume);
+    }
+
+    public void PlayCardAttack()
+    {
+        if (cardAttackClip != null) source.PlayOneShot(cardAttackClip, cardAttackVolume);
+    }
+
+    public void PlayCardTie()
+    {
+        if (cardTieClip != null) source.PlayOneShot(cardTieClip, cardTieVolume);
+    }
+
+    public void PlayMatchVictory()
+    {
+        if (matchVictoryClip != null) source.PlayOneShot(matchVictoryClip, matchVictoryVolume);
+    }
+
+    public void PlayMatchDraw()
+    {
+        if (matchDrawClip != null) source.PlayOneShot(matchDrawClip, matchDrawVolume);
+    }
+
+    public void PlayMatchDefeat()
+    {
+        if (matchDefeatClip != null) source.PlayOneShot(matchDefeatClip, matchDefeatVolume);
     }
 
     private bool IsExcluded(string sceneName)

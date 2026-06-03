@@ -1101,7 +1101,11 @@ public class DraftController : MonoBehaviour
     // 14턴 드래프트가 끝나면 호출. 중앙 컬럼을 비우고 "패 확인" UI를 그린 뒤 30초 카운트다운.
     private void EnterHandReviewPhase()
     {
-        if (UIClickAudio.Instance != null) UIClickAudio.Instance.StopDraftBgm();
+        if (UIClickAudio.Instance != null)
+        {
+            UIClickAudio.Instance.StopDraftBgm();
+            UIClickAudio.Instance.PlayMatchPrev();
+        }
         // 픽 단계 UI 모두 제거 + 잔여 참조 정리
         if (centerColTransform != null)
         {
@@ -1166,6 +1170,7 @@ public class DraftController : MonoBehaviour
             remaining -= Time.deltaTime;
         }
         if (matchTimerLabel != null) matchTimerLabel.text = "남은 시간 : 0초";
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.StopMatchPrev();
         ShowMatchStartPopup();
     }
 
@@ -1233,6 +1238,7 @@ public class DraftController : MonoBehaviour
     {
         currentMatchIndex = matchIndex;
         selectedMatchSlotIndex = -1;
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.PlayMatchBgm();
 
         if (centerColTransform != null)
         {
@@ -2089,6 +2095,7 @@ public class DraftController : MonoBehaviour
         }
         Vector2 lungeEnd = attackerHome + new Vector2(lungeDist * dir, 0f);
         attacker.rt.anchoredPosition = lungeEnd;
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.PlayCardAttack();
 
         // 3) 충돌 연출: 방어자 흔들기 + 붉은 틴트 + 임팩트 플래시 (병행 진행)
         var defenderImg = defender.backGo != null ? defender.backGo.GetComponent<Image>() : null;
@@ -2203,6 +2210,7 @@ public class DraftController : MonoBehaviour
         Vector2 rightMeet = rightHome + new Vector2(-lungeDist, 0f);
         left.rt.anchoredPosition = leftMeet;
         right.rt.anchoredPosition = rightMeet;
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.PlayCardTie();
 
         // 3) 충돌 정지("띵!") — 가운데에 임팩트 플래시 + 짧은 멈춤
         GameObject flash = null;
@@ -2305,6 +2313,7 @@ public class DraftController : MonoBehaviour
     // 두 카드를 동시에 가로 압축 → 스왑 → 펼침. CardFlip.cs의 단일 카드 플립을 두 장 동시 진행하도록 재구성.
     private IEnumerator FlipBothCardsRoutine(DuelCardRefs a, DuelCardRefs b, float duration)
     {
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.PlayCardFlip();
         float half = duration * 0.5f;
         float t = 0f;
         while (t < half)
@@ -2392,6 +2401,13 @@ public class DraftController : MonoBehaviour
         var canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
 
+        if (UIClickAudio.Instance != null)
+        {
+            if (outcome == MatchOutcome.Win) UIClickAudio.Instance.PlayMatchVictory();
+            else if (outcome == MatchOutcome.Lose) UIClickAudio.Instance.PlayMatchDefeat();
+            else UIClickAudio.Instance.PlayMatchDraw();
+        }
+
         matchResultPopup = new GameObject("MatchResultPopup", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         matchResultPopup.transform.SetParent(canvas.transform, false);
         var overlayRt = (RectTransform)matchResultPopup.transform;
@@ -2462,6 +2478,7 @@ public class DraftController : MonoBehaviour
     // 5번 매치 종료: 시리즈 점수 반영 + 최종 결과 팝업
     private void FinalizeMatches()
     {
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.StopMatchBgm();
         UpdateSeriesScoreFromMatches();
         ShowFinalMatchPopup();
     }
@@ -2495,6 +2512,14 @@ public class DraftController : MonoBehaviour
     {
         var canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
+
+        if (UIClickAudio.Instance != null)
+        {
+            int pFinal = playerWallet + playerEarnings;
+            int aFinal = aiWallet + aiEarnings;
+            if (pFinal > aFinal) UIClickAudio.Instance.PlaySeriesVictory();
+            else if (pFinal < aFinal) UIClickAudio.Instance.PlaySeriesDefeat();
+        }
 
         finalOrderOverlay = new GameObject("FinalMatchOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         finalOrderOverlay.transform.SetParent(canvas.transform, false);
