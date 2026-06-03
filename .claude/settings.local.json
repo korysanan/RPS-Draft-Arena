@@ -22,7 +22,9 @@
       "Bash(mv /Users/ujin0561/Documents/GitHub/RPS-Draft-Arena/Assets/Sound/Match_Prev.wav /Users/ujin0561/Documents/GitHub/RPS-Draft-Arena/Assets/Resources/Match_Prev.wav)",
       "Bash(mv /Users/ujin0561/Documents/GitHub/RPS-Draft-Arena/Assets/Sound/Match_Prev.wav.meta /Users/ujin0561/Documents/GitHub/RPS-Draft-Arena/Assets/Resources/Match_Prev.wav.meta)",
       "Bash(mkdir -p \"Assets/Resources/Competition\" \"Assets/Resources/Play\")",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(python -c \"data=open\\('Assets/Scenes/Tutorial.unity','rb'\\).read\\(\\); print\\('CRLF' if b'\\\\r\\\\n' in data else 'LF'\\)\")",
+      "Bash(python -c ' *)"
     ]
   }
 }
