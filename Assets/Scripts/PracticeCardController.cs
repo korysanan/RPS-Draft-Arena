@@ -956,13 +956,13 @@ public class PracticeCardController : MonoBehaviour
 
             if (firstPickButton == null)
             {
-                firstPickButton = CreateUiButton(pickChoicePopup.transform, "선픽", new Vector2(-157.8156f, -112.0411f), font, firstPickButtonSprite);
-                ((RectTransform)firstPickButton.transform).sizeDelta = new Vector2(315.6312f, 224.0822f);
+                firstPickButton = CreateUiButton(pickChoicePopup.transform, "선픽", new Vector2(-156.5f, -108.36f), font, firstPickButtonSprite);
+                ((RectTransform)firstPickButton.transform).sizeDelta = new Vector2(255.9494f, 90.793f);
             }
             if (secondPickButton == null)
             {
-                secondPickButton = CreateUiButton(pickChoicePopup.transform, "후픽", new Vector2(114.8993f, -115.05f), font, secondPickButtonSprite);
-                ((RectTransform)secondPickButton.transform).sizeDelta = new Vector2(368.9825f, 218.06f);
+                secondPickButton = CreateUiButton(pickChoicePopup.transform, "후픽", new Vector2(116.5571f, -107.7f), font, secondPickButtonSprite);
+                ((RectTransform)secondPickButton.transform).sizeDelta = new Vector2(255.5873f, 89.4644f);
             }
         }
 
@@ -970,12 +970,14 @@ public class PracticeCardController : MonoBehaviour
         // 배경 이미지가 있어도 이 텍스트는 항상 표시 — 남은 시간을 안 보여주면 사용자가 갑작스러운 자동선택에 당황한다.
         if (pickChoiceCountdownLabel == null && pickChoicePopup != null)
         {
-            pickChoiceCountdownLabel = CreateTmpLabel(pickChoicePopup.transform, $"남은 시간 : {Mathf.CeilToInt(pickChoiceTimeLimit)}초", font, 36f);
+            pickChoiceCountdownLabel = CreateTmpLabel(pickChoicePopup.transform, $"남은 시간 : {Mathf.CeilToInt(pickChoiceTimeLimit)}초", font, 30f);
+            pickChoiceCountdownLabel.fontStyle = FontStyles.Bold;
             var rt = pickChoiceCountdownLabel.rectTransform;
             rt.anchorMin = new Vector2(0f, 0.85f);
             rt.anchorMax = new Vector2(1f, 1f);
-            rt.offsetMin = new Vector2(16f, 4f);
-            rt.offsetMax = new Vector2(-16f, -4f);
+            // 인스펙터 기준 Left:-6 / Top:278 / Right:38 / Bottom:-270
+            rt.offsetMin = new Vector2(-6f, -270f);
+            rt.offsetMax = new Vector2(-38f, -278f);
         }
 
         if (aiChoosingPopup == null)

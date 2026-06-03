@@ -153,7 +153,13 @@ public class PracticeSetupManager : MonoBehaviour
                 $"난이도: {DifficultyKor(selectedDifficulty)}\n종류: {RPSKor(selectedRPS)}\n경기 방식: {FormatKor(selectedFormat)}";
         }
         if (popupPanel != null)
+        {
+            // 팝업의 DimOverlay(풀스크린 RaycastTarget)가 뒤 UI 클릭을 막으려면
+            // 팝업이 다른 형제(QuitButton 등)보다 위에 그려져야 한다.
+            // 표시 직전 마지막 자식으로 올려 항상 최상단에 두고 클릭을 가로채게 한다.
+            popupPanel.transform.SetAsLastSibling();
             popupPanel.SetActive(true);
+        }
     }
 
     // 팝업의 "게임 시작" 버튼: 선택값을 정적 PracticeSettings에 보관 후 Practice 씬 로드
@@ -177,7 +183,11 @@ public class PracticeSetupManager : MonoBehaviour
     public void OnQuitClicked()
     {
         if (quitConfirmPanel != null)
+        {
+            // 종료 확인 팝업도 동일하게 최상단으로 올려 풀스크린 블로커가 뒤 UI를 막게 한다.
+            quitConfirmPanel.transform.SetAsLastSibling();
             quitConfirmPanel.SetActive(true);
+        }
     }
 
     // 확인 팝업의 "닫기" 버튼: 팝업만 닫음
