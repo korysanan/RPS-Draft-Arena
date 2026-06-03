@@ -167,6 +167,16 @@ public class UIClickAudio : MonoBehaviour
         bgmSource.Play();
     }
 
+    // 라운드 결과(승리/패배) BGM 정지. "다음 라운드" 버튼처럼 결과 화면을 떠날 때 호출.
+    // 현재 재생 중인 게 결과 BGM일 때만 멈춰, 다른 BGM(드래프트/매치)에는 영향을 주지 않는다.
+    public void StopSeriesResult()
+    {
+        if (bgmSource == null) return;
+        if (bgmSource.clip != seriesVictoryClip && bgmSource.clip != seriesDefeatClip) return;
+        bgmSource.Stop();
+        bgmSource.clip = null;
+    }
+
     public void HookButtonsIn(Scene scene)
     {
         if (IsExcluded(scene.name)) return;

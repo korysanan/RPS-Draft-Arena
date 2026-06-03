@@ -111,6 +111,15 @@ public class PracticeCardController : MonoBehaviour
     }
 #endif
 
+    // Resources 폴더에서 스프라이트를 로드 (빌드/에디터 공통). 인스펙터 미와이어 시 폴백으로 사용.
+    // PNG가 Multiple(spriteMode=2) 임포트라 우선 LoadAll<Sprite>로 첫 서브 스프라이트를 꺼낸다.
+    private static Sprite LoadResourceSprite(string resourcePath)
+    {
+        var all = Resources.LoadAll<Sprite>(resourcePath);
+        if (all != null && all.Length > 0) return all[0];
+        return Resources.Load<Sprite>(resourcePath);
+    }
+
     // 듀얼 플립용 카드 뒷면 스프라이트. 와이어 우선, 에디터에서는 미와이어 시 자동 로드.
     // 빌드본에서는 와이어가 없으면 null 반환 → 호출 측에서 폴백 처리 필요.
     public Sprite GetCardBackSprite()
@@ -236,10 +245,8 @@ public class PracticeCardController : MonoBehaviour
     {
         get
         {
-            if (cardCrackSprite != null) return cardCrackSprite;
-#if UNITY_EDITOR
-            cardCrackSprite = LoadSpriteAtPath("Assets/Image/Play/card_crack.png");
-#endif
+            // 인스펙터 와이어 우선, 미와이어 시 Resources에서 로드 (빌드본 호환).
+            if (cardCrackSprite == null) cardCrackSprite = LoadResourceSprite("Play/card_crack");
             return cardCrackSprite;
         }
     }
@@ -281,10 +288,8 @@ public class PracticeCardController : MonoBehaviour
     {
         get
         {
-            if (roundWinSprite != null) return roundWinSprite;
-#if UNITY_EDITOR
-            roundWinSprite = LoadSpriteAtPath("Assets/Image/Play/Round_Win.png");
-#endif
+            // 인스펙터 와이어 우선, 미와이어 시 Resources에서 로드 (빌드본 호환).
+            if (roundWinSprite == null) roundWinSprite = LoadResourceSprite("Play/Round_Win");
             return roundWinSprite;
         }
     }
@@ -292,10 +297,8 @@ public class PracticeCardController : MonoBehaviour
     {
         get
         {
-            if (roundLossSprite != null) return roundLossSprite;
-#if UNITY_EDITOR
-            roundLossSprite = LoadSpriteAtPath("Assets/Image/Play/Round_Loss.png");
-#endif
+            // 인스펙터 와이어 우선, 미와이어 시 Resources에서 로드 (빌드본 호환).
+            if (roundLossSprite == null) roundLossSprite = LoadResourceSprite("Play/Round_Loss");
             return roundLossSprite;
         }
     }

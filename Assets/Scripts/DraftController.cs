@@ -2689,6 +2689,8 @@ public class DraftController : MonoBehaviour
     // "다음 라운드" 버튼 → PracticeCardController가 다음 라운드를 시작하도록 위임
     private void OnNextRoundClicked()
     {
+        // 라운드 결과 BGM(승리/패배)을 즉시 정지 — 다음 라운드로 넘어가면 더 이상 필요 없다.
+        if (UIClickAudio.Instance != null) UIClickAudio.Instance.StopSeriesResult();
         if (finalOrderOverlay != null) { Destroy(finalOrderOverlay); finalOrderOverlay = null; }
         if (practiceController == null)
             practiceController = FindObjectOfType<PracticeCardController>(true);
@@ -2823,35 +2825,31 @@ public class DraftController : MonoBehaviour
         return img;
     }
 
-#if UNITY_EDITOR
-    // 에셋 경로 → 스프라이트 캐시 (에디터 자동 로드).
-    private static readonly Dictionary<string, Sprite> editorSpriteCache = new Dictionary<string, Sprite>();
-#endif
-    // 지정 경로의 스프라이트를 에디터에서 자동 로드/캐시. RoundWin/Loss 스프라이트와 동일한 방식(Multiple 모드 폴백 포함).
-    private static Sprite LoadEditorSprite(string path)
+    // Resources 경로 → 스프라이트 캐시 (빌드/에디터 공통).
+    private static readonly Dictionary<string, Sprite> resourceSpriteCache = new Dictionary<string, Sprite>();
+
+    // Resources 폴더에서 스프라이트를 로드/캐시. 빌드본에서도 동작하도록 AssetDatabase 대신 Resources.Load 사용.
+    // PNG가 Multiple(spriteMode=2) 임포트라 우선 LoadAll<Sprite>로 첫 서브 스프라이트를 꺼낸다.
+    private static Sprite LoadResourceSprite(string resourcePath)
     {
-#if UNITY_EDITOR
-        if (editorSpriteCache.TryGetValue(path, out var cached) && cached != null) return cached;
-        var sprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path);
-        if (sprite == null)
-        {
-            var all = UnityEditor.AssetDatabase.LoadAllAssetsAtPath(path);
-            if (all != null) foreach (var a in all) if (a is Sprite s) { sprite = s; break; }
-        }
-        editorSpriteCache[path] = sprite;
+        if (resourceSpriteCache.TryGetValue(resourcePath, out var cached) && cached != null) return cached;
+        var all = Resources.LoadAll<Sprite>(resourcePath);
+        Sprite sprite = (all != null && all.Length > 0) ? all[0] : Resources.Load<Sprite>(resourcePath);
+        resourceSpriteCache[resourcePath] = sprite;
         return sprite;
-#else
-        return null;
-#endif
     }
 
-    // 라운드 결과 팝업용 스프라이트 (Assets/Image/Play/Round_Result/).
-    private static Sprite LoadRoundResultSprite(string fileName)
-        => LoadEditorSprite($"Assets/Image/Play/Round_Result/{fileName}");
+    // 파일명(확장자 포함 가능)에서 .png 확장자를 떼어 Resources 경로로 변환.
+    private static string StripExtension(string fileName)
+        => fileName.EndsWith(".png") ? fileName.Substring(0, fileName.Length - 4) : fileName;
 
-    // 대회/드래프트 안내용 스프라이트 (Assets/Image/Competition/).
+    // 라운드 결과 팝업용 스프라이트 (Assets/Resources/Round_Result/).
+    private static Sprite LoadRoundResultSprite(string fileName)
+        => LoadResourceSprite($"Round_Result/{StripExtension(fileName)}");
+
+    // 대회/드래프트 안내용 스프라이트 (Assets/Resources/Competition/).
     private static Sprite LoadCompetitionSprite(string fileName)
-        => LoadEditorSprite($"Assets/Image/Competition/{fileName}");
+        => LoadResourceSprite($"Competition/{StripExtension(fileName)}");
 
     // 텍스트 라벨 없이 스프라이트만 표시하는 이미지 버튼 생성 (preserveAspect로 비율 유지).
     private Button AddImageButton(RectTransform parent, string name, Vector2 anchorMin, Vector2 anchorMax, Sprite sprite)
