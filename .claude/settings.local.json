@@ -38,7 +38,21 @@
       "Bash(rm -f Image/Relationship.meta)",
       "Bash(xargs -I {} basename {})",
       "Bash(sed -i 's/^  allowedAutorotateToPortrait: 1$/  allowedAutorotateToPortrait: 0/; s/^  allowedAutorotateToPortraitUpsideDown: 1$/  allowedAutorotateToPortraitUpsideDown: 0/' ProjectSettings/ProjectSettings.asset)",
-      "Bash(sed -n '11p;64,68p' ProjectSettings/ProjectSettings.asset)"
+      "Bash(sed -n '11p;64,68p' ProjectSettings/ProjectSettings.asset)",
+      "Bash(xargs wc -l)",
+      "Bash(cp Assets/Scripts/DraftController.cs /tmp/DraftController.bak)",
+      "Bash(sed -i '1453,1800d' Assets/Scripts/DraftController.cs)",
+      "Bash(sed -n '1449,1456p' Assets/Scripts/DraftController.cs)",
+      "Bash(which dotnet *)",
+      "Bash(dotnet --version)",
+      "Bash(which csc *)",
+      "Bash(which mcs *)",
+      "Bash(cp Assembly-CSharp.csproj /tmp/Assembly-CSharp.csproj.bak)",
+      "Bash(sed -i 's#    <Compile Include=\"Assets\\\\\\\\Scripts\\\\\\\\DraftController.cs\" />#    <Compile Include=\"Assets\\\\\\\\Scripts\\\\\\\\DraftController.cs\" />\\\\n    <Compile Include=\"Assets\\\\\\\\Scripts\\\\\\\\DraftAI.cs\" />#' Assembly-CSharp.csproj)",
+      "Bash(timeout 240 dotnet build Assembly-CSharp.csproj -nologo)",
+      "Bash(timeout 240 dotnet build Assembly-CSharp.csproj -nologo --no-incremental)",
+      "Bash(cp /tmp/Assembly-CSharp.csproj.bak Assembly-CSharp.csproj)",
+      "Bash(git check-ignore *)"
     ]
   }
 }
