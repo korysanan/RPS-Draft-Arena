@@ -33,7 +33,7 @@ public class UIClickAudio : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float matchDefeatVolume = 1f;
     [SerializeField, Range(0f, 1f)] private float seriesVictoryVolume = 0.6f;
     [SerializeField, Range(0f, 1f)] private float seriesDefeatVolume = 0.6f;
-    [SerializeField] private string[] excludedScenes = { "Practice", "PracticeMode" };
+    [SerializeField] private string[] excludedScenes = { "Practice", "PracticeMode", "Tutorial" };
 
     private AudioSource source;
     private AudioSource bgmSource;

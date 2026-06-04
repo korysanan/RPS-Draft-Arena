@@ -32,8 +32,9 @@ public class PracticeCardController : MonoBehaviour
     // 비어 있으면 DraftController가 GetCardSprite()로 자동 폴백한다.
     [SerializeField] private List<Sprite> elementPickSprites = new List<Sprite>();
 
-    // 카드 길게 누름 시 표시할 상성표 스프라이트(1536x1024). 와이어 순서는 elementTextures와 동일.
-    // 에디터에서는 미와이어 시 Assets/Image/Relationship/{element}_Rela.png에서 자동 로드한다.
+    // 카드 길게 누름 시 표시할 상성표 스프라이트 폴백용. 와이어 순서는 elementTextures와 동일.
+    // 실제 표시는 RPS 모드(3/5/7)별 폴더 이미지를 우선 사용하며(GetRelationshipSprite 참조),
+    // 이 와이어 리스트는 RPS별 이미지를 못 찾았을 때의 폴백으로만 쓰인다.
     [SerializeField] private List<Sprite> elementRelaSprites = new List<Sprite>();
 
     // 매치 단계 듀얼 플립에서 카드 뒷면(=뒤집기 전 모습)으로 사용. 빌드본 호환을 위해 인스펙터에 와이어해야 함.
@@ -91,11 +92,6 @@ public class PracticeCardController : MonoBehaviour
         return LoadSpriteAtPath($"Assets/Image/Draft_Image/Pick_Card/{element}_Pick.png");
     }
 
-    private static Sprite LoadRelaSpriteFromAssetDatabase(ElementType element)
-    {
-        return LoadSpriteAtPath($"Assets/Image/Relationship/{element}_Rela.png");
-    }
-
     private static Sprite LoadSpriteAtPath(string path)
     {
         var assets = UnityEditor.AssetDatabase.LoadAllAssetsAtPath(path);
@@ -136,25 +132,50 @@ public class PracticeCardController : MonoBehaviour
         return null;
     }
 
-    // 카드 길게 누름 → 상성표 표시용 스프라이트. 와이어 우선, 에디터에서는 미와이어 시 자동 로드.
+    // RPS 모드(3/5/7)별 상성표 스프라이트 캐시. 같은 (rps, element) 조합은 1회만 로드한다.
+    private readonly Dictionary<string, Sprite> relaSpriteCache = new Dictionary<string, Sprite>();
+
+    // 카드 길게 누름 → 상성표 표시용 스프라이트.
+    // PracticeMode에서 고른 RPS 종류(3/5/7)에 따라 다른 폴더의 이미지를 사용한다:
+    //   Assets/Resources/Relationship/RPS{N}/{element}_Rela_RPS{N}.png  (Resources.Load → 에디터·빌드 공통)
+    // 만약 Resources에서 못 찾으면 인스펙터 와이어(elementRelaSprites)로 폴백한다.
     public Sprite GetRelationshipSprite(ElementType element)
     {
         int idx = (int)element;
         if (idx < 0) return null;
 
-        if (idx < elementRelaSprites.Count && elementRelaSprites[idx] != null)
-            return elementRelaSprites[idx];
+        string rps = ResolveRpsFolder(PracticeSettings.Rps);
+        string key = $"{rps}/{idx}";
+        if (relaSpriteCache.TryGetValue(key, out var cached) && cached != null)
+            return cached;
 
-#if UNITY_EDITOR
-        var loaded = LoadRelaSpriteFromAssetDatabase(element);
-        if (loaded != null)
+        Sprite sprite = LoadRpsRelaSprite(rps, element);
+
+        // RPS별 이미지를 못 찾으면(예: 빌드에서 Resources 미존재) 인스펙터 와이어로 폴백
+        if (sprite == null && idx < elementRelaSprites.Count)
+            sprite = elementRelaSprites[idx];
+
+        if (sprite != null) relaSpriteCache[key] = sprite;
+        return sprite;
+    }
+
+    // PracticeSettings.Rps → 상성표 폴더/접미사 문자열. None 등 미선택은 RPS7로 보호 폴백.
+    private static string ResolveRpsFolder(PracticeSetupManager.RPSType rps)
+    {
+        return rps switch
         {
-            while (elementRelaSprites.Count <= idx) elementRelaSprites.Add(null);
-            elementRelaSprites[idx] = loaded;
-            return loaded;
-        }
-#endif
-        return null;
+            PracticeSetupManager.RPSType.RPS3 => "RPS3",
+            PracticeSetupManager.RPSType.RPS5 => "RPS5",
+            PracticeSetupManager.RPSType.RPS7 => "RPS7",
+            _ => "RPS7"
+        };
+    }
+
+    // RPS 모드별 상성표 PNG 로드. Assets/Resources/Relationship/RPS{N}/{element}_Rela_RPS{N}.png 를
+    // Resources.Load로 읽어 에디터·빌드 모두에서 동일하게 동작한다.
+    private static Sprite LoadRpsRelaSprite(string rpsFolder, ElementType element)
+    {
+        return LoadResourceSprite($"Relationship/{rpsFolder}/{element}_Rela_{rpsFolder}");
     }
 
     // 매칭 결과 팝업 (Practice 씬에 미리 배치, 시작 시 비활성)

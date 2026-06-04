@@ -24,7 +24,18 @@
       "Bash(mkdir -p \"Assets/Resources/Competition\" \"Assets/Resources/Play\")",
       "Bash(git mv *)",
       "Bash(python -c \"data=open\\('Assets/Scenes/Tutorial.unity','rb'\\).read\\(\\); print\\('CRLF' if b'\\\\r\\\\n' in data else 'LF'\\)\")",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(grep -rl \"enum ElementType\\\\|enum RPSType\\\\|class PracticeSettings\" .)",
+      "Bash(grep -rn \"enum RPSType\" .)",
+      "Bash(grep -rn \"enum ElementType\" .)",
+      "Bash(grep -rn \"class PracticeSettings\\\\|static.*Rps\" .)",
+      "Bash(mkdir -p Resources/Relationship)",
+      "Bash(mv Image/Relationship/RPS3 Resources/Relationship/)",
+      "Bash(mv Image/Relationship/RPS3.meta Resources/Relationship/)",
+      "Bash(mv Image/Relationship/RPS5 Resources/Relationship/)",
+      "Bash(mv Image/Relationship/RPS5.meta Resources/Relationship/)",
+      "Bash(rmdir Image/Relationship)",
+      "Bash(rm -f Image/Relationship.meta)"
     ]
   }
 }
