@@ -35,7 +35,10 @@
       "Bash(mv Image/Relationship/RPS5 Resources/Relationship/)",
       "Bash(mv Image/Relationship/RPS5.meta Resources/Relationship/)",
       "Bash(rmdir Image/Relationship)",
-      "Bash(rm -f Image/Relationship.meta)"
+      "Bash(rm -f Image/Relationship.meta)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(sed -i 's/^  allowedAutorotateToPortrait: 1$/  allowedAutorotateToPortrait: 0/; s/^  allowedAutorotateToPortraitUpsideDown: 1$/  allowedAutorotateToPortraitUpsideDown: 0/' ProjectSettings/ProjectSettings.asset)",
+      "Bash(sed -n '11p;64,68p' ProjectSettings/ProjectSettings.asset)"
     ]
   }
 }
