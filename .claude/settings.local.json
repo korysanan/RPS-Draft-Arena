@@ -52,7 +52,9 @@
       "Bash(timeout 240 dotnet build Assembly-CSharp.csproj -nologo)",
       "Bash(timeout 240 dotnet build Assembly-CSharp.csproj -nologo --no-incremental)",
       "Bash(cp /tmp/Assembly-CSharp.csproj.bak Assembly-CSharp.csproj)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(ls README*)",
+      "Bash(echo \"exit:$?\")"
     ]
   }
 }
