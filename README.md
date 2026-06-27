@@ -1,16 +1,9 @@
 # RPS Draft Arena
+<img width="1824" height="1018" alt="Image" src="https://github.com/user-attachments/assets/2937b64a-28f8-4916-9851-cc0251abc25a" />
 
 > 가위바위보의 상성 관계를 **드래프트(밴픽) + 베팅 메타**로 확장한 1:1 카드 전략 게임
 >
 > 상대의 행동을 관측해 성향을 추정하고, 게임이 진행될수록 똑똑해지는 **학습형 AI**를 직접 설계했습니다.
-
-<p>
-  <img alt="Unity" src="https://img.shields.io/badge/Unity-6000.3.11f1-000000?logo=unity&logoColor=white">
-  <img alt="C#" src="https://img.shields.io/badge/C%23-239120?logo=csharp&logoColor=white">
-  <img alt="URP" src="https://img.shields.io/badge/Render%20Pipeline-URP-2C2C2C">
-  <img alt="Input System" src="https://img.shields.io/badge/Input-New%20Input%20System-1E5DF8">
-  <img alt="Platform" src="https://img.shields.io/badge/Platform-2D-1abc9c">
-</p>
 
 ---
 
@@ -24,8 +17,9 @@
 - [PART 2 — Advisor 패턴 아키텍처](#part-2--advisor-패턴-아키텍처)
 - [프로젝트 구조](#프로젝트-구조)
 - [씬 흐름](#씬-흐름)
-- [기술 스택](#기술-스택)
-- [실행 방법](#실행-방법)
+- [Download](#Download)
+- [자료](#자료)
+- [전체 플레이 영상](#전체-플레이-영상)
 
 ---
 
@@ -70,10 +64,19 @@
 ```
 
 1. **선/후픽 결정** — 카드 뒤집기 미니게임으로 누가 먼저 뽑을지 결정 (동점 시 결판전)
+<img width="400" height="225" alt="Image" src="https://github.com/user-attachments/assets/3d09f43a-a418-4e9b-a3f2-402fa96a5a90" />
+
 2. **스네이크 드래프트** — A→B→B→A 순서로 양측이 각 7장의 카드를 픽
+<img width="400" height="225" alt="Image" src="https://github.com/user-attachments/assets/98aa544d-08c3-448b-a788-667310b0704d" />
+
 3. **패 확인** — 30초간 내 패와 상대가 가져간 카드를 검토
+<img width="400" height="225" alt="Image" src="https://github.com/user-attachments/assets/f6e043a7-e744-41fd-85c5-1248151adbfa" />
+
 4. **5매치 진행** — 매 매치마다 카드 1장 + 포인트를 베팅, 상성으로 승패 판정 후 포인트 정산
+<img width="400" height="225" alt="Image" src="https://github.com/user-attachments/assets/73c85fdf-9156-45bc-bd4e-12951ba10afb" />
+
 5. **시리즈 진행** — 라운드 승자에게 +1점, 먼저 `ceil(N/2)` 점에 도달하면 시리즈 승리
+<img width="400" height="225" alt="Image" src="https://github.com/user-attachments/assets/fd216e0f-50fa-4c85-abc3-bcec75a8e6d2" />
 
 ### 매치 / 베팅 규칙
 
@@ -90,6 +93,8 @@
 ## 7속성 상성 시스템
 
 RPS-3 / 5 / 7은 모두 **같은 N=7 상성표의 부분 집합**입니다. 각 속성은 정확히 3승 3패로 완전 대칭입니다.
+
+<img width="1536" height="1024" alt="Image" src="https://github.com/user-attachments/assets/443579ab-a037-43e7-9cc4-a20020ca9138" />
 
 | 속성 | 이김 (→) | 짐 |
 |---|---|---|
@@ -410,32 +415,18 @@ MainTitle  →  Main_Home  →  Single_Play_Home  →  PracticeMode(설정)  →
 - 설정은 `PracticeSettings`(static)로 전달되고, `Practice` 씬에서 `PracticeCardController`가 게임 루프를 부트스트랩
 - Tournament / League / Challenge / PVP 등은 향후 확장용 스텁
 
----
-
-## 기술 스택
-
-| 영역 | 사용 기술 |
-|---|---|
-| 엔진 | Unity 6 (6000.3.11f1) |
-| 언어 | C# |
-| 렌더 | Universal Render Pipeline (URP), 2D |
-| 입력 | New Input System |
-| UI | TextMeshPro (전 텍스트 표준 폰트: 온글잎 긍정 SDF) |
-| 설계 | Advisor 패턴, 읽기 전용 캡슐화, EV·베이지안 추론 기반 의사결정 |
 
 ---
+## Download
 
-## 실행 방법
+- 🪟 **[Windows](https://drive.google.com/file/d/1pIJM3AN8bkTv2EMW1nbrWP10WZqd9UvQ/view)**
+- 🍎 **[macOS](https://drive.google.com/file/d/1F-6md9Qol0eWUANIkX_zsWnd6geswsFD/view)**
+- 🤖 **[Android (APK)](https://drive.google.com/file/d/1aAH-YBgSOiwq7xHw9mYTQ4ULHTU-Ie3c/view)**
 
-```bash
-git clone https://github.com/korysanan/RPS-Draft-Arena.git
-```
+## 자료
 
-1. **Unity 6 (6000.3.11f1 이상)** 으로 프로젝트 열기 (Unity Hub 권장)
-2. 최초 임포트 시 패키지 복원 및 라이브러리 빌드를 기다림
-3. `Assets/Scenes/MainTitle.unity`를 열고 ▶ Play
-   - 빠르게 인게임을 보려면 `Assets/Scenes/Single_Play_Mode/PracticeMode.unity`에서 시작
+- 📄 **[기술 설명서](https://drive.google.com/file/d/1AY2HMUB0QFLoK_HOa3fzCL3yhZexfqza/view)**
 
----
+## 전체 플레이 영상
 
-<sub>본 README는 프로젝트 기술 설명서(Technical Design Document)를 바탕으로 작성되었습니다. AI 설계와 아키텍처에 대한 더 자세한 설명은 [`DraftAI.cs`](Assets/Scripts/DraftAI.cs)와 [`DraftController.cs`](Assets/Scripts/DraftController.cs)의 주석을 참고하세요.</sub>
+▶️ **[영상 보기](https://drive.google.com/file/d/1Cw4bsWG0E3lGZjqeKBqycPVkRhS5xaoJ/view)**
